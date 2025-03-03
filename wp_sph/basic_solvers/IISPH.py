@@ -21,6 +21,76 @@ from .sph_funcs import *  # TODO cache the functions
 
 
 @wp.kernel
+def initialize_fluid(
+    particle_x: wp.array(dtype=wp.vec3),
+    width: float,
+    height: float,
+    length: float,
+):
+    tid = wp.tid()
+
+    # grid size
+    nr_x = wp.int32(width / 4.0 / SMOOTHING_LENGTH)
+    nr_y = wp.int32(height / SMOOTHING_LENGTH)
+    nr_z = wp.int32(length / 4.0 / SMOOTHING_LENGTH)
+
+    # calculate particle position
+    z = wp.float(tid % nr_z)
+    y = wp.float((tid // nr_z) % nr_y)
+    x = wp.float((tid // (nr_z * nr_y)) % nr_x)
+    pos = SMOOTHING_LENGTH * wp.vec3(x, y, z)
+
+    # add small jitter
+    state = wp.rand_init(123, tid)
+    pos = pos + 0.001 * SMOOTHING_LENGTH * wp.vec3(
+        wp.randn(state), wp.randn(state), wp.randn(state)
+    )
+
+    # set position
+    particle_x[tid] = pos
+
+
+def initialize_boundary(width, height, length, spacing, layers):
+    """
+    Generate boundary particle positions for a box.
+    """
+    x_min, x_max = 0.0, width
+    y_min, y_max = 0.0, height
+    z_min, z_max = 0.0, length
+
+    # Generate coordinates with a fixed spacing
+    tol = spacing * 0.5
+    x_coords = np.arange(x_min, x_max + tol, spacing)
+    y_coords = np.arange(y_min, y_max + tol, spacing)
+    z_coords = np.arange(z_min, z_max + tol, spacing)
+
+    X, Y, Z = np.meshgrid(x_coords, y_coords, z_coords, indexing="ij")
+
+    # Define thickness for boundary layers
+    thresh = layers * spacing
+
+    # Create boundary mask:
+    mask = (
+        ((X - x_min) < thresh)
+        | ((x_max - X) < thresh)
+        | ((Z - z_min) < thresh)
+        | ((z_max - Z) < thresh)
+        | ((Y - y_min) < thresh)
+    ) & (Y < height)
+
+    X_b = X[mask]
+    Y_b = Y[mask]
+    Z_b = Z[mask]
+
+    particles = [
+        wp.vec3(float(x), float(y), float(z)) for x, y, z in zip(X_b, Y_b, Z_b)
+    ]
+    particles_array = wp.array(particles, dtype=wp.vec3)
+
+    return particles_array, X_b.size
+
+
+@wp.kernel
 def count_neighbor(
     grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
@@ -190,6 +260,9 @@ def compute_a_ii(
     particle_p: wp.array(dtype=float),
     term_a_ii: wp.array(dtype=float),
 ):
+
+    raise NotImplementedError
+
     tid = wp.tid()
 
     # order threads by cell
@@ -228,36 +301,6 @@ def drift(
     particle_x[tid] = x + particle_v[tid] * dt
 
 
-@wp.kernel
-def initialize_particles(
-    particle_x: wp.array(dtype=wp.vec3),
-    width: float,
-    height: float,
-    length: float,
-):
-    tid = wp.tid()
-
-    # grid size
-    nr_x = wp.int32(width / 4.0 / SMOOTHING_LENGTH)
-    nr_y = wp.int32(height / SMOOTHING_LENGTH)
-    nr_z = wp.int32(length / 4.0 / SMOOTHING_LENGTH)
-
-    # calculate particle position
-    z = wp.float(tid % nr_z)
-    y = wp.float((tid // nr_z) % nr_y)
-    x = wp.float((tid // (nr_z * nr_y)) % nr_x)
-    pos = SMOOTHING_LENGTH * wp.vec3(x, y, z)
-
-    # add small jitter
-    state = wp.rand_init(123, tid)
-    pos = pos + 0.001 * SMOOTHING_LENGTH * wp.vec3(
-        wp.randn(state), wp.randn(state), wp.randn(state)
-    )
-
-    # set position
-    particle_x[tid] = pos
-
-
 class II_solver:
     def __init__(self, stage_path="example_sph.usd", verbose=False):
         self.verbose = verbose
@@ -275,8 +318,7 @@ class II_solver:
         self.base_density = 1.0
         self.particle_mass = FLUID_MASS
         self.dt = 0.01 * SMOOTHING_LENGTH  # decrease sim dt by smoothing length
-        self.dynamic_visc = 0.025
-        self.damping_coef = -0.95
+        self.boundary_layer = 3
         self.n = int(
             self.height
             * (self.width / 4.0)
@@ -284,6 +326,11 @@ class II_solver:
             / (SMOOTHING_LENGTH**3)
         )  # number particles (small box in corner)
         self.sim_step_to_frame_ratio = int(32 / SMOOTHING_LENGTH)
+
+        # set boundary
+        self.boundary, self.boundary_n = initialize_boundary(
+            self.width, self.height, self.length, SMOOTHING_LENGTH, self.boundary_layer
+        )
 
         # allocate arrays
         self.x = wp.empty(self.n, dtype=wp.vec3)
@@ -295,14 +342,22 @@ class II_solver:
         self.p = wp.zeros(self.n, dtype=float)
         self.term_d_ii = wp.zeros(self.n, dtype=wp.vec3)
         self.term_a_ii = wp.zeros(self.n, dtype=float)
-        self.neighbor_num = wp.zeros(self.n, dtype=wp.uint32)
-        self.neighbor_list = wp.zeros(self.n * 100, dtype=wp.uint32)
-        self.neighbor_distance = wp.zeros(self.n * 100, dtype=float)
-        self.neighbor_list_index = wp.zeros(self.n, dtype=wp.uint32)
+        self.ff_neighbor_num = wp.zeros(self.n, dtype=wp.uint32)
+        self.ff_neighbor_list = wp.zeros(self.n * 100, dtype=wp.uint32)
+        self.ff_neighbor_distance = wp.zeros(self.n * 100, dtype=float)
+        self.ff_neighbor_list_index = wp.zeros(self.n, dtype=wp.uint32)
+        self.fs_neighbor_num = wp.zeros(self.n, dtype=wp.uint32)
+        self.fs_neighbor_list = wp.zeros(self.n * 100, dtype=wp.uint32)
+        self.fs_neighbor_distance = wp.zeros(self.n * 100, dtype=float)
+        self.fs_neighbor_list_index = wp.zeros(self.n, dtype=wp.uint32)
+        self.ss_neighbor_num = wp.zeros(self.boundary_n, dtype=wp.uint32)
+        self.ss_neighbor_list = wp.zeros(self.boundary_n * 100, dtype=wp.uint32)
+        self.ss_neighbor_distance = wp.zeros(self.boundary_n * 100, dtype=float)
+        self.ss_neighbor_list_index = wp.zeros(self.boundary_n, dtype=wp.uint32)
 
-        # set random positions
+        # set fluid
         wp.launch(
-            kernel=initialize_particles,
+            kernel=initialize_fluid,
             dim=self.n,
             inputs=[
                 self.x,
@@ -310,7 +365,7 @@ class II_solver:
                 self.height,
                 self.length,
             ],
-        )  # initialize in small area
+        )
 
         # create hash array
         grid_size = int(self.height / (4.0 * SMOOTHING_LENGTH))
@@ -332,9 +387,9 @@ class II_solver:
                         dim=self.n,
                         inputs=[
                             self.grid.id,
-                            self.neighbor_num,
-                            self.neighbor_list_index,
-                            self.neighbor_list,
+                            self.ff_neighbor_num,
+                            self.ff_neighbor_list_index,
+                            self.ff_neighbor_list,
                             self.x,
                         ],
                         outputs=[self.rho],
@@ -359,9 +414,9 @@ class II_solver:
                             self.grid.id,
                             self.dt,
                             self.x,
-                            self.neighbor_num,
-                            self.neighbor_list,
-                            self.neighbor_list_index,
+                            self.ff_neighbor_num,
+                            self.ff_neighbor_list,
+                            self.ff_neighbor_list_index,
                             self.rho,
                         ],
                         outputs=[self.term_d_ii],
@@ -376,9 +431,9 @@ class II_solver:
                             self.dt,
                             self.x,
                             self.v_adv,
-                            self.neighbor_num,
-                            self.neighbor_list,
-                            self.neighbor_list_index,
+                            self.ff_neighbor_num,
+                            self.ff_neighbor_list,
+                            self.ff_neighbor_list_index,
                             self.rho,
                         ],
                         outputs=[self.rho_adv],
@@ -423,6 +478,8 @@ class II_solver:
 
     def neighbor_search(self):
         self.grid.build(self.x, SMOOTHING_LENGTH)
+
+        # search fluid neighbors for fluid
         neighbor_pointer = wp.zeros(1, dtype=wp.uint32)
 
         wp.launch(
@@ -434,9 +491,13 @@ class II_solver:
             ],
             outputs=[
                 neighbor_pointer,
-                self.neighbor_num,
-                self.neighbor_list_index,
+                self.ff_neighbor_num,
+                self.ff_neighbor_list_index,
             ],
+        )
+
+        print(
+            f"Cached {neighbor_pointer[0]} neighbors in array of size {self.ff_neighbor_list.shape}."
         )
 
         wp.launch(
@@ -445,10 +506,82 @@ class II_solver:
             inputs=[
                 self.grid.id,
                 self.x,
-                self.neighbor_list_index,
+                self.ff_neighbor_list_index,
             ],
             outputs=[
-                self.neighbor_list,
-                self.neighbor_distance,
+                self.ff_neighbor_list,
+                self.ff_neighbor_distance,
+            ],
+        )
+
+        self.grid.build(self.boundary, SMOOTHING_LENGTH)
+
+        # search boundary neighbors for fluid
+        neighbor_pointer = wp.zeros(1, dtype=wp.uint32)
+
+        wp.launch(
+            kernel=count_neighbor,
+            dim=self.n,
+            inputs=[
+                self.grid.id,
+                self.x,
+            ],
+            outputs=[
+                neighbor_pointer,
+                self.fs_neighbor_num,
+                self.fs_neighbor_list_index,
+            ],
+        )
+
+        print(
+            f"Cached {neighbor_pointer[0]} neighbors in array of size {self.fs_neighbor_list.shape}."
+        )
+
+        wp.launch(
+            kernel=store_neighbor,
+            dim=self.n,
+            inputs=[
+                self.grid.id,
+                self.x,
+                self.fs_neighbor_list_index,
+            ],
+            outputs=[
+                self.fs_neighbor_list,
+                self.fs_neighbor_distance,
+            ],
+        )
+
+        # search boundary neighbors for boundary
+        neighbor_pointer = wp.zeros(1, dtype=wp.uint32)
+
+        wp.launch(
+            kernel=count_neighbor,
+            dim=self.n,
+            inputs=[
+                self.grid.id,
+                self.x,
+            ],
+            outputs=[
+                neighbor_pointer,
+                self.ss_neighbor_num,
+                self.ss_neighbor_list_index,
+            ],
+        )
+
+        print(
+            f"Cached {neighbor_pointer[0]} neighbors in array of size {self.ss_neighbor_list.shape}."
+        )
+
+        wp.launch(
+            kernel=store_neighbor,
+            dim=self.n,
+            inputs=[
+                self.grid.id,
+                self.x,
+                self.ss_neighbor_list_index,
+            ],
+            outputs=[
+                self.ss_neighbor_list,
+                self.ss_neighbor_distance,
             ],
         )
