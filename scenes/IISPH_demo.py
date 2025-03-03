@@ -1,0 +1,40 @@
+import argparse
+import os
+import sys
+
+import warp as wp
+
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
+import wp_sph as wsph
+
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    "--device", type=str, default=None, help="Override the default Warp device."
+)
+parser.add_argument(
+    "--stage_path",
+    type=lambda x: None if x == "None" else str(x),
+    default="example_sph.usd",
+    help="Path to the output USD file.",
+)
+parser.add_argument(
+    "--num_frames", type=int, default=480, help="Total number of frames."
+)
+parser.add_argument(
+    "--verbose",
+    action="store_true",
+    help="Print out additional status messages during execution.",
+)
+
+args = parser.parse_known_args()[0]
+
+with wp.ScopedDevice(args.device):
+    sph_demo = wsph.II_solver(stage_path=args.stage_path, verbose=args.verbose)
+
+    for _ in range(args.num_frames):
+        sph_demo.render()
+        sph_demo.step()
+
+    if sph_demo.renderer:
+        sph_demo.renderer.save()
