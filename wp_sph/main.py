@@ -5,6 +5,9 @@ import warp as wp
 
 GRAVITY = 0.1
 SMOOTHING_LENGTH = 0.8  # NOTE change this to adjust number of particles
+OMEGA = 0.5
+RHO_0 = 1.0
+ETA = 1.0e-4
 
 
 ###########################################################################
