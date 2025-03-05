@@ -116,6 +116,7 @@ def count_neighbor(
     grid: wp.uint64,
     neighbor_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
+    neighbor_x: wp.array(dtype=wp.vec3),
     neighbor_pointer: wp.array(dtype=int),
     neighbor_num: wp.array(dtype=int),
     neighbor_list_index: wp.array(dtype=int),
@@ -131,7 +132,7 @@ def count_neighbor(
 
     # count neighbors
     for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):
-        distance = wp.length(x - particle_x[index])
+        distance = wp.length(x - neighbor_x[index])
         if distance < SMOOTHING_LENGTH:
             neighbor_id += 1
 
@@ -145,6 +146,7 @@ def store_neighbor(
     grid: wp.uint64,
     neighbor_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
+    neighbor_x: wp.array(dtype=wp.vec3),
     neighbor_list_index: wp.array(dtype=int),
     neighbor_list: wp.array(dtype=int),
     neighbor_distance: wp.array(dtype=float),
@@ -161,7 +163,7 @@ def store_neighbor(
 
     # store neighbors
     for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):
-        distance = wp.length(x - particle_x[index])
+        distance = wp.length(x - neighbor_x[index])
         if distance < SMOOTHING_LENGTH:
             neighbor_list[start_index + neighbor_id] = index
             neighbor_distance[start_index + neighbor_id] = distance
@@ -797,6 +799,7 @@ class IISPH:
                 self.fluid_grid.id,
                 self.fluid_grid.id,
                 self.x,
+                self.x,
             ],
             outputs=[
                 neighbor_pointer,
@@ -816,6 +819,7 @@ class IISPH:
                 self.fluid_grid.id,
                 self.fluid_grid.id,
                 self.x,
+                self.x,
                 self.ff_neighbor_list_index,
             ],
             outputs=[
@@ -834,6 +838,7 @@ class IISPH:
                 self.fluid_grid.id,
                 self.boundary_grid.id,
                 self.x,
+                self.boundary_x,
             ],
             outputs=[
                 neighbor_pointer,
@@ -853,6 +858,7 @@ class IISPH:
                 self.fluid_grid.id,
                 self.boundary_grid.id,
                 self.x,
+                self.boundary_x,
                 self.fs_neighbor_list_index,
             ],
             outputs=[
