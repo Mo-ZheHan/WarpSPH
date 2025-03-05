@@ -53,9 +53,13 @@ def initialize_box(width, height, length, spacing, layers):
     """
     Generate boundary particle positions for a box.
     """
-    x_min, x_max = 0.0, width
-    y_min, y_max = 0.0, height
-    z_min, z_max = 0.0, length
+
+    # Define thickness for boundary layers
+    thresh = layers * spacing
+
+    x_min, x_max = -thresh, width + thresh
+    y_min, y_max = -thresh, height + thresh
+    z_min, z_max = -thresh, length + thresh
 
     # Generate coordinates with a fixed spacing
     tol = spacing * 0.5
@@ -64,9 +68,6 @@ def initialize_box(width, height, length, spacing, layers):
     z_coords = np.arange(z_min, z_max + tol, spacing)
 
     X, Y, Z = np.meshgrid(x_coords, y_coords, z_coords, indexing="ij")
-
-    # Define thickness for boundary layers
-    thresh = layers * spacing
 
     # Create boundary mask:
     mask = (
@@ -77,16 +78,10 @@ def initialize_box(width, height, length, spacing, layers):
         | ((Y - y_min) < thresh)
     ) & (Y < height)
 
-    X_b = X[mask]
-    Y_b = Y[mask]
-    Z_b = Z[mask]
-
-    particles = [
-        wp.vec3(float(x), float(y), float(z)) for x, y, z in zip(X_b, Y_b, Z_b)
-    ]
+    particles = np.stack([X[mask], Y[mask], Z[mask]], axis=1)
     particles_array = wp.array(particles, dtype=wp.vec3)
 
-    return particles_array, X_b.size
+    return particles_array, particles.shape[0]
 
 
 @wp.kernel
@@ -450,7 +445,7 @@ def update_p_rho(
 
     wp.atomic_add(sum_rho, 0, updated_rho)
     particle_p[i] += (RHO_0 - updated_rho) * OMEGA / term_a_ii[i]
-    particle_p[i] = max(particle_p[i], 0.0)
+    particle_p[i] = wp.max(particle_p[i], 0.0)
 
 
 @wp.kernel
