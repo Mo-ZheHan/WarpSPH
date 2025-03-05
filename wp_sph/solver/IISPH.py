@@ -274,7 +274,7 @@ def predict_rho_adv(
 
 
 @wp.kernel
-def compute_term_d(
+def compute_term_d(  # TODO check again
     fluid_grid: wp.uint64,
     dt: float,
     particle_x: wp.array(dtype=wp.vec3),
@@ -308,10 +308,11 @@ def compute_term_d(
     for j in range(
         ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
     ):
-        grad_W_ij = grad_spline_W(particle_x[ff_neighbor_list[j]] - x)
+        index = ff_neighbor_list[j]
+        grad_W_ij = grad_spline_W(particle_x[index] - x)
         term_1 -= grad_W_ij / rho**2.0
 
-        term_d_ij[j] = -grad_W_ij * term_3 / fluid_rho[j] ** 2.0
+        term_d_ij[j] = -grad_W_ij * term_3 / fluid_rho[index] ** 2.0
         term_d_ji[j] = grad_W_ij * term_3 / rho**2.0
 
     for j in range(
@@ -368,7 +369,7 @@ def compute_term_a(
 
 
 @wp.kernel
-def compute_term_Ap(
+def compute_term_Ap(  # TODO check again
     fluid_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
     particle_p: wp.array(dtype=float),
@@ -397,20 +398,29 @@ def compute_term_Ap(
     term_2 = float(0.0)
 
     x = particle_x[i]
+    sum_d_ij_p_j[i] = wp.vec3(0.0)
 
     # loop through neighbors to compute density
     for j in range(
         ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
     ):
+        index = ff_neighbor_list[j]
         d_jk_p_k = wp.vec3(0.0)
         for k in range(
-            ff_neighbor_list_index[j], ff_neighbor_list_index[j] + ff_neighbor_num[j]
+            ff_neighbor_list_index[index],
+            ff_neighbor_list_index[index] + ff_neighbor_num[index],
         ):
             d_jk_p_k += term_d_ij[k] * particle_p[ff_neighbor_list[k]]
 
-        term = term_d_ji[j] * particle_p[i] - term_d_ii[j] * particle_p[j] - d_jk_p_k
-        term_1 += wp.dot(term, grad_spline_W(particle_x[j] - x))
-        sum_d_ij_p_j[i] += term_d_ij[j] * particle_p[ff_neighbor_list[j]]
+        term = (
+            term_d_ji[j] * particle_p[i]
+            - term_d_ii[index] * particle_p[index]
+            - d_jk_p_k
+        )
+
+        term_1 += wp.dot(term, grad_spline_W(particle_x[index] - x))
+
+        sum_d_ij_p_j[i] += term_d_ij[j] * particle_p[index]
 
     for j in range(
         ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
@@ -445,9 +455,14 @@ def update_p_rho(
     i = wp.hash_grid_point_id(fluid_grid, tid)
 
     updated_rho = fluid_rho_adv[i] + term_Ap_i[i]
-
     wp.atomic_add(sum_rho, 0, updated_rho)
-    particle_p[i] += (RHO_0 - updated_rho) * OMEGA / term_a_ii[i]
+
+    # TODO check this clamp
+    term_a_ii_i = term_a_ii[i]
+    # if term_a_ii_i > -INV_SMALL and term_a_ii_i < INV_SMALL:
+    #     term_a_ii_i = wp.sign(term_a_ii_i) * INV_SMALL
+
+    particle_p[i] += (RHO_0 - updated_rho) * OMEGA / term_a_ii_i
     particle_p[i] = wp.max(particle_p[i], 0.0)
 
 
