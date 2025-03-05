@@ -92,16 +92,16 @@ files = [
 
 [[package]]
 name = "warp-lang"
-version = "1.6.0"
+version = "1.6.1"
 description = "A Python framework for high-performance simulation and graphics programming"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "warp_lang-1.6.0-py3-none-macosx_10_13_universal2.whl", hash = "sha256:3dc28f91203bcd78a135aedc8eafd7fa1bf829a8adeaedbb5d5638c28a8673a0"},
-    {file = "warp_lang-1.6.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:79cbf1b7425f055229b737fc7e54bd9db314e65148f5f8afc0ab160d1677c3a2"},
-    {file = "warp_lang-1.6.0-py3-none-manylinux2014_x86_64.whl", hash = "sha256:2c2af77e1e2600d3f84ecf07b1e80a6faa66482e5476214c27645861fcfc2975"},
-    {file = "warp_lang-1.6.0-py3-none-win_amd64.whl", hash = "sha256:800903699a116ffbac67e643807eb24a12f63fa9c0a78e6760033cbba7c1913d"},
+    {file = "warp_lang-1.6.1-py3-none-macosx_10_13_universal2.whl", hash = "sha256:ccae8d988c76b22ca62d7700491bfc67990c4b5361b64a6367d825a737431798"},
+    {file = "warp_lang-1.6.1-py3-none-manylinux2014_aarch64.whl", hash = "sha256:33e5bf10c060abe69749a9ab55e2afd411b4d4d0180573d8a06d9e69bfb0741d"},
+    {file = "warp_lang-1.6.1-py3-none-manylinux2014_x86_64.whl", hash = "sha256:a0155020f3f22f41b11eb5a0f2f7f01bae4a9c24db3137d35cb9f7e07be98ada"},
+    {file = "warp_lang-1.6.1-py3-none-win_amd64.whl", hash = "sha256:b327c84941c7826b5d84ce0c5441e71e507f475ee3ade921bdf60295338806f2"},
 ]
 
 [package.dependencies]

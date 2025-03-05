@@ -18,10 +18,10 @@ def spline_W(r: float):
     q = r / h
     tmp = 0.0
     if 1 > q > 0.5:
-        tmp = 2.0 * (1.0 - q) ** 3
+        tmp = 2.0 * (1.0 - q) ** 3.0
         tmp *= sigma
     elif q <= 0.5:
-        tmp = 6.0 * (q**3 - q**2) + 1.0
+        tmp = 6.0 * (q**3.0 - q**2.0) + 1.0
         tmp *= sigma
     return tmp
 
@@ -31,9 +31,9 @@ def grad_spline_W(r: wp.vec3):
     q = wp.length(r) / h
     tmp = 0.0
     if 1 > q > 0.5:
-        tmp = -6.0 * (1.0 - q) ** 2
+        tmp = -6.0 * (1.0 - q) ** 2.0
     elif q <= 0.5:
-        tmp = 6.0 * (3.0 * q**2 - 2.0 * q)
+        tmp = 6.0 * (3.0 * q**2.0 - 2.0 * q)
     return tmp * sig_inv_h * wp.normalize(r)
 
 
