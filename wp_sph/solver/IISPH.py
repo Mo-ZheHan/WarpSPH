@@ -46,7 +46,8 @@ def initialize_fluid(
     )
 
     # set position
-    particle_x[tid] = pos
+    # TODO remove the offset
+    particle_x[tid] = pos + wp.vec3(width / 3.0, height / 4.0, length / 3.0)
 
 
 def initialize_box(width, height, length, spacing, layers):
@@ -265,7 +266,7 @@ def predict_rho_adv(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
         nabla_W_ib = grad_spline_W(boundary_x[fs_neighbor_list[j]] - x)
-        term_2 += wp.dot(v_adv, nabla_W_ib) * boundary_phi[index]
+        term_2 += wp.dot(v_adv, nabla_W_ib) * boundary_phi[fs_neighbor_list[j]]
 
     fluid_rho_adv[i] = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
 
@@ -478,15 +479,16 @@ class IISPH:
         self.verbose = verbose
 
         # render params
-        fps = 60
-        self.frame_dt = 1.0 / fps
+        # fps = 100
+        # self.frame_dt = 1.0 / fps
         self.sim_time = 0.0
 
         # simulation params
         self.width = 80.0  # x
         self.height = 80.0  # y
         self.length = 80.0  # z
-        self.dt = 0.01 * SMOOTHING_LENGTH  # decrease sim dt by smoothing length
+        # self.dt = 0.01 * SMOOTHING_LENGTH  # decrease sim dt by smoothing length
+        self.dt = 0.01
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
         self.n = int(
@@ -495,7 +497,6 @@ class IISPH:
             * (self.height / 4.0)
             / (SMOOTHING_LENGTH**3)
         )  # number particles (small box in corner)
-        self.sim_step_to_frame_ratio = int(32 / SMOOTHING_LENGTH)
         self.grid_size = int(self.height / (4.0 * SMOOTHING_LENGTH))
 
         # set boundary
@@ -571,60 +572,132 @@ class IISPH:
         # renderer
         self.renderer = wp.render.UsdRenderer(stage_path) if stage_path else None
 
-    def step(self):
+    def step(self):  # TODO use CUDA graph capture
         with wp.ScopedTimer("step"):
-            for _ in range(self.sim_step_to_frame_ratio):
-                with wp.ScopedTimer("neighbor search", active=self.verbose):
-                    self.neighbor_search()
+            with wp.ScopedTimer("neighbor search", active=self.verbose):
+                self.neighbor_search()
 
-                with wp.ScopedTimer("predict advection", active=self.verbose):
+            with wp.ScopedTimer("predict advection", active=self.verbose):
 
-                    # init pressure
+                # init pressure
+                wp.launch(
+                    kernel=init_pressure,
+                    dim=self.n,
+                    outputs=[self.p],
+                )
+
+                # compute density
+                wp.launch(
+                    kernel=compute_density,
+                    dim=self.n,
+                    inputs=[
+                        self.fluid_grid.id,
+                        self.ff_neighbor_num,
+                        self.ff_neighbor_list_index,
+                        self.ff_neighbor_distance,
+                        self.fs_neighbor_num,
+                        self.fs_neighbor_list,
+                        self.fs_neighbor_list_index,
+                        self.fs_neighbor_distance,
+                        self.boundary_phi,
+                    ],
+                    outputs=[self.rho],
+                )
+
+                # predict advection
+                wp.launch(
+                    kernel=predict_v_adv,
+                    dim=self.n,
+                    inputs=[
+                        self.dt,
+                        self.v,
+                    ],
+                    outputs=[self.v_adv],
+                )
+
+                # predict density advection
+                wp.launch(
+                    kernel=predict_rho_adv,
+                    dim=self.n,
+                    inputs=[
+                        self.fluid_grid.id,
+                        self.dt,
+                        self.x,
+                        self.boundary_x,
+                        self.v_adv,
+                        self.ff_neighbor_num,
+                        self.ff_neighbor_list,
+                        self.ff_neighbor_list_index,
+                        self.fs_neighbor_num,
+                        self.fs_neighbor_list,
+                        self.fs_neighbor_list_index,
+                        self.boundary_phi,
+                        self.rho,
+                    ],
+                    outputs=[self.rho_adv],
+                )
+
+                # compute d_ii, d_ij, d_ji
+                wp.launch(
+                    kernel=compute_term_d,
+                    dim=self.n,
+                    inputs=[
+                        self.fluid_grid.id,
+                        self.dt,
+                        self.x,
+                        self.boundary_x,
+                        self.rho,
+                        self.ff_neighbor_num,
+                        self.ff_neighbor_list,
+                        self.ff_neighbor_list_index,
+                        self.fs_neighbor_num,
+                        self.fs_neighbor_list,
+                        self.fs_neighbor_list_index,
+                        self.boundary_phi,
+                    ],
+                    outputs=[
+                        self.term_d_ii,
+                        self.term_d_ij,
+                        self.term_d_ji,
+                    ],
+                )
+
+                # compute a_ii
+                wp.launch(
+                    kernel=compute_term_a,
+                    dim=self.n,
+                    inputs=[
+                        self.fluid_grid.id,
+                        self.x,
+                        self.boundary_x,
+                        self.ff_neighbor_num,
+                        self.ff_neighbor_list,
+                        self.ff_neighbor_list_index,
+                        self.fs_neighbor_num,
+                        self.fs_neighbor_list,
+                        self.fs_neighbor_list_index,
+                        self.boundary_phi,
+                        self.term_d_ii,
+                        self.term_d_ji,
+                    ],
+                    outputs=[self.term_a_ii],
+                )
+
+            with wp.ScopedTimer("pressure solve", active=self.verbose):
+                loop = 0
+                while (loop < 2) or (self.average_rho - RHO_0 > ETA):
+                    if loop > 100:
+                        self.raise_error("Pressure solver did not converge.")
+
+                    # solve pressure
                     wp.launch(
-                        kernel=init_pressure,
-                        dim=self.n,
-                        outputs=[self.p],
-                    )
-
-                    # compute density
-                    wp.launch(
-                        kernel=compute_density,
+                        kernel=compute_term_Ap,
                         dim=self.n,
                         inputs=[
                             self.fluid_grid.id,
-                            self.ff_neighbor_num,
-                            self.ff_neighbor_list_index,
-                            self.ff_neighbor_distance,
-                            self.fs_neighbor_num,
-                            self.fs_neighbor_list,
-                            self.fs_neighbor_list_index,
-                            self.fs_neighbor_distance,
-                            self.boundary_phi,
-                        ],
-                        outputs=[self.rho],
-                    )
-
-                    # predict advection
-                    wp.launch(
-                        kernel=predict_v_adv,
-                        dim=self.n,
-                        inputs=[
-                            self.dt,
-                            self.v,
-                        ],
-                        outputs=[self.v_adv],
-                    )
-
-                    # predict density advection
-                    wp.launch(
-                        kernel=predict_rho_adv,
-                        dim=self.n,
-                        inputs=[
-                            self.fluid_grid.id,
-                            self.dt,
                             self.x,
+                            self.p,
                             self.boundary_x,
-                            self.v_adv,
                             self.ff_neighbor_num,
                             self.ff_neighbor_list,
                             self.ff_neighbor_list_index,
@@ -632,132 +705,59 @@ class IISPH:
                             self.fs_neighbor_list,
                             self.fs_neighbor_list_index,
                             self.boundary_phi,
-                            self.rho,
-                        ],
-                        outputs=[self.rho_adv],
-                    )
-
-                    # compute d_ii, d_ij, d_ji
-                    wp.launch(
-                        kernel=compute_term_d,
-                        dim=self.n,
-                        inputs=[
-                            self.fluid_grid.id,
-                            self.dt,
-                            self.x,
-                            self.boundary_x,
-                            self.rho,
-                            self.ff_neighbor_num,
-                            self.ff_neighbor_list,
-                            self.ff_neighbor_list_index,
-                            self.fs_neighbor_num,
-                            self.fs_neighbor_list,
-                            self.fs_neighbor_list_index,
-                            self.boundary_phi,
-                        ],
-                        outputs=[
                             self.term_d_ii,
                             self.term_d_ij,
                             self.term_d_ji,
+                            self.term_a_ii,
+                        ],
+                        outputs=[
+                            self.sum_d_ij_p_j,
+                            self.term_Ap_i,
                         ],
                     )
 
-                    # compute a_ii
+                    self.sum_rho = wp.zeros(1, dtype=float)
                     wp.launch(
-                        kernel=compute_term_a,
+                        kernel=update_p_rho,
                         dim=self.n,
                         inputs=[
                             self.fluid_grid.id,
-                            self.x,
-                            self.boundary_x,
-                            self.ff_neighbor_num,
-                            self.ff_neighbor_list,
-                            self.ff_neighbor_list_index,
-                            self.fs_neighbor_num,
-                            self.fs_neighbor_list,
-                            self.fs_neighbor_list_index,
-                            self.boundary_phi,
-                            self.term_d_ii,
-                            self.term_d_ji,
+                            self.rho_adv,
+                            self.term_a_ii,
+                            self.term_Ap_i,
                         ],
-                        outputs=[self.term_a_ii],
-                    )
-
-                with wp.ScopedTimer("pressure solve", active=self.verbose):
-                    loop = 0
-                    while (loop < 2) or (self.average_rho - RHO_0 > ETA):
-                        if loop > 100:
-                            self.raise_error("Pressure solver did not converge.")
-
-                        # solve pressure
-                        wp.launch(
-                            kernel=compute_term_Ap,
-                            dim=self.n,
-                            inputs=[
-                                self.fluid_grid.id,
-                                self.x,
-                                self.p,
-                                self.boundary_x,
-                                self.ff_neighbor_num,
-                                self.ff_neighbor_list,
-                                self.ff_neighbor_list_index,
-                                self.fs_neighbor_num,
-                                self.fs_neighbor_list,
-                                self.fs_neighbor_list_index,
-                                self.boundary_phi,
-                                self.term_d_ii,
-                                self.term_d_ij,
-                                self.term_d_ji,
-                                self.term_a_ii,
-                            ],
-                            outputs=[
-                                self.sum_d_ij_p_j,
-                                self.term_Ap_i,
-                            ],
-                        )
-
-                        self.sum_rho = wp.zeros(1, dtype=float)
-                        wp.launch(
-                            kernel=update_p_rho,
-                            dim=self.n,
-                            inputs=[
-                                self.fluid_grid.id,
-                                self.rho_adv,
-                                self.term_a_ii,
-                                self.term_Ap_i,
-                            ],
-                            outputs=[
-                                self.p,
-                                self.sum_rho,
-                            ],
-                        )
-
-                        loop += 1
-
-                with wp.ScopedTimer("integration", active=self.verbose):
-                    # kick
-                    wp.launch(
-                        kernel=kick,
-                        dim=self.n,
-                        inputs=[
-                            self.inv_dt,
+                        outputs=[
                             self.p,
-                            self.v_adv,
-                            self.term_d_ii,
-                            self.sum_d_ij_p_j,
+                            self.sum_rho,
                         ],
-                        outputs=[self.v],
                     )
 
-                    # drift
-                    wp.launch(
-                        kernel=drift,
-                        dim=self.n,
-                        inputs=[self.dt, self.v],
-                        outputs=[self.x],
-                    )
+                    loop += 1
 
-            self.sim_time += self.frame_dt
+            with wp.ScopedTimer("integration", active=self.verbose):
+                # kick
+                wp.launch(
+                    kernel=kick,
+                    dim=self.n,
+                    inputs=[
+                        self.inv_dt,
+                        self.p,
+                        self.v_adv,
+                        self.term_d_ii,
+                        self.sum_d_ij_p_j,
+                    ],
+                    outputs=[self.v],
+                )
+
+                # drift
+                wp.launch(
+                    kernel=drift,
+                    dim=self.n,
+                    inputs=[self.dt, self.v],
+                    outputs=[self.x],
+                )
+
+            self.sim_time += self.dt
 
     def render(self):
         if self.renderer is None:
@@ -768,8 +768,14 @@ class IISPH:
             self.renderer.render_points(
                 points=self.x.numpy(),
                 radius=SMOOTHING_LENGTH,
-                name="points",
-                colors=(0.8, 0.3, 0.2),
+                name="fluid",
+                colors=(0.5, 0.5, 0.8),
+            )
+            self.renderer.render_points(
+                points=self.boundary_x.numpy(),
+                radius=SMOOTHING_LENGTH,
+                name="boundary",
+                colors=(0.0, 0.0, 0.5),
             )
             self.renderer.end_frame()
 
@@ -800,7 +806,7 @@ class IISPH:
         )
 
         print(
-            f"Completed search for fluid neighbors of fluid particles. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.ff_neighbor_list.shape}."
+            f"Completed search for fluid neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.ff_neighbor_list.shape[0]}."
         )
 
         wp.launch(
@@ -837,7 +843,7 @@ class IISPH:
         )
 
         print(
-            f"Completed search for boundary neighbors of fluid particles. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.fs_neighbor_list.shape}."
+            f"Completed search for boundary neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.fs_neighbor_list.shape[0]}."
         )
 
         wp.launch(

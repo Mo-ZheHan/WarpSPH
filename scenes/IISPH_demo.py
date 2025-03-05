@@ -18,7 +18,9 @@ parser.add_argument(
     default="example_sph.usd",
     help="Path to the output USD file.",
 )
-parser.add_argument("--num_frames", type=int, default=1, help="Total number of frames.")
+parser.add_argument(
+    "--num_frames", type=int, default=10, help="Total number of frames."
+)
 parser.add_argument(
     "--verbose",
     action="store_true",
