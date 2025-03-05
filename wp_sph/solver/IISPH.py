@@ -478,7 +478,7 @@ def drift(
     particle_x[tid] += particle_v[tid] * dt
 
 
-class II_solver:
+class IISPH:
     def __init__(self, stage_path="example_sph.usd", verbose=False):
         self.verbose = verbose
 

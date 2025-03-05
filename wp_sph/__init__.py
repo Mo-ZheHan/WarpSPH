@@ -1,1 +1,1 @@
-from .basic_solvers import *
+from . import solver

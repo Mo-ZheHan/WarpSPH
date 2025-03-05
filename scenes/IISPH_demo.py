@@ -28,7 +28,7 @@ parser.add_argument(
 args = parser.parse_known_args()[0]
 
 with wp.ScopedDevice(args.device):
-    sph_demo = wsph.II_solver(stage_path=args.stage_path, verbose=args.verbose)
+    sph_demo = wsph.solver.IISPH(stage_path=args.stage_path, verbose=args.verbose)
 
     for _ in range(args.num_frames):
         sph_demo.render()
