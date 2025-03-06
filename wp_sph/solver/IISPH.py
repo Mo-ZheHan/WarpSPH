@@ -52,37 +52,50 @@ def initialize_fluid(
 
 def initialize_box(width, height, length, spacing, layers):
     """
-    Generate boundary particle positions for a box.
+    Generate boundary particle positions for a box with exactly the specified number of layers.
+    Creates boundary particles around a fluid domain, with open top.
     """
+    x_range = range(-layers, int(width / spacing) + layers)
+    y_range = range(-layers, int(height / spacing))  # No top boundary
+    z_range = range(-layers, int(length / spacing) + layers)
 
-    # Define thickness for boundary layers
-    thresh = layers * spacing
+    # Calculate domain bounds (interior region)
+    x_min, x_max = 0, int(width / spacing) - 1
+    y_min, y_max = 0, int(height / spacing) - 1
+    z_min, z_max = 0, int(length / spacing) - 1
 
-    x_min, x_max = -thresh, width + thresh
-    y_min, y_max = -thresh, height + thresh
-    z_min, z_max = -thresh, length + thresh
+    particles = []
 
-    # Generate coordinates with a fixed spacing
-    tol = spacing * 0.5
-    x_coords = np.arange(x_min, x_max + tol, spacing)
-    y_coords = np.arange(y_min, y_max + tol, spacing)
-    z_coords = np.arange(z_min, z_max + tol, spacing)
+    # Generate all candidate positions
+    for x_idx in x_range:
+        for y_idx in y_range:
+            for z_idx in z_range:
+                is_outside = (
+                    x_idx < x_min
+                    or x_idx > x_max
+                    or y_idx < y_min  # No condition for y_max to keep top open
+                    or z_idx < z_min
+                    or z_idx > z_max
+                )
 
-    X, Y, Z = np.meshgrid(x_coords, y_coords, z_coords, indexing="ij")
+                is_within_layers = (
+                    x_idx >= x_min - layers
+                    and x_idx <= x_max + layers
+                    and y_idx >= y_min - layers  # No upper y constraint
+                    and z_idx >= z_min - layers
+                    and z_idx <= z_max + layers
+                )
 
-    # Create boundary mask:
-    mask = (
-        ((X - x_min) < thresh)
-        | ((x_max - X) < thresh)
-        | ((Z - z_min) < thresh)
-        | ((z_max - Z) < thresh)
-        | ((Y - y_min) < thresh)
-    ) & (Y < height)
+                if is_outside and is_within_layers:
+                    # Convert to physical coordinates
+                    x = x_idx * spacing
+                    y = y_idx * spacing
+                    z = z_idx * spacing
+                    particles.append([x, y, z])
 
-    particles = np.stack([X[mask], Y[mask], Z[mask]], axis=1)
     particles_array = wp.array(particles, dtype=wp.vec3)
 
-    return particles_array, particles.shape[0]
+    return particles_array, len(particles)
 
 
 @wp.kernel
@@ -459,8 +472,8 @@ def update_p_rho(
 
     # TODO check this clamp
     term_a_ii_i = term_a_ii[i]
-    # if term_a_ii_i > -INV_SMALL and term_a_ii_i < INV_SMALL:
-    #     term_a_ii_i = wp.sign(term_a_ii_i) * INV_SMALL
+    if term_a_ii_i > -INV_SMALL and term_a_ii_i < INV_SMALL:
+        term_a_ii_i = wp.sign(term_a_ii_i) * INV_SMALL
 
     particle_p[i] += (RHO_0 - updated_rho) * OMEGA / term_a_ii_i
     particle_p[i] = wp.max(particle_p[i], 0.0)
@@ -501,9 +514,9 @@ class IISPH:
         self.sim_time = 0.0
 
         # simulation params
-        self.width = 80.0  # x
-        self.height = 80.0  # y
-        self.length = 80.0  # z
+        self.width = 40.0  # x
+        self.height = 40.0  # y
+        self.length = 40.0  # z
         # self.dt = 0.01 * SMOOTHING_LENGTH  # decrease sim dt by smoothing length
         self.dt = 0.01
         self.inv_dt = 1 / self.dt

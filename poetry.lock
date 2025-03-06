@@ -113,5 +113,5 @@ extras = ["matplotlib", "pyglet", "usd-core"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = "3.12.7"
-content-hash = "fbc958d4bc78cd38602abb67ec7e66d795562a3a3948a50a552a23731bdf5c15"
+python-versions = "3.12.9"
+content-hash = "a6b49f062731b852ddb2c8896450eb0baa51a975f48d63f36818b6b45638ae5e"
