@@ -47,7 +47,7 @@ def initialize_fluid(
 
     # set position
     # TODO remove the offset
-    particle_x[tid] = pos + wp.vec3(width / 3.0, height / 4.0, length / 3.0)
+    particle_x[tid] = pos + wp.vec3(width / 20.0, height / 20.0, length / 20.0)
 
 
 def initialize_box(width, height, length, spacing, layers):
@@ -225,7 +225,9 @@ def compute_density(
     ):
         term_2 += spline_W(fs_neighbor_distance[j]) * boundary_phi[fs_neighbor_list[j]]
 
-    fluid_rho[i] = term_1 * FLUID_MASS + term_2
+    # TODO check this clamp
+    # fluid_rho[i] = term_1 * FLUID_MASS + term_2
+    fluid_rho[i] = wp.max(term_1 * FLUID_MASS + term_2, RHO_0)
 
 
 @wp.kernel
@@ -565,17 +567,17 @@ class IISPH:
         self.sum_rho = wp.zeros(1, dtype=float)
         self.term_a_ii = wp.zeros(self.n, dtype=float)
         self.term_d_ii = wp.zeros(self.n, dtype=wp.vec3)
-        self.term_d_ij = wp.zeros(self.n * 100, dtype=wp.vec3)
-        self.term_d_ji = wp.zeros(self.n * 100, dtype=wp.vec3)
+        self.term_d_ij = wp.zeros(self.n * 60, dtype=wp.vec3)
+        self.term_d_ji = wp.zeros(self.n * 60, dtype=wp.vec3)
         self.term_Ap_i = wp.zeros(self.n, dtype=float)
         self.sum_d_ij_p_j = wp.zeros(self.n, dtype=wp.vec3)
         self.ff_neighbor_num = wp.zeros(self.n, dtype=int)
-        self.ff_neighbor_list = wp.zeros(self.n * 100, dtype=int)
-        self.ff_neighbor_distance = wp.zeros(self.n * 100, dtype=float)
+        self.ff_neighbor_list = wp.zeros(self.n * 60, dtype=int)
+        self.ff_neighbor_distance = wp.zeros(self.n * 60, dtype=float)
         self.ff_neighbor_list_index = wp.zeros(self.n, dtype=int)
         self.fs_neighbor_num = wp.zeros(self.n, dtype=int)
-        self.fs_neighbor_list = wp.zeros(self.n * 100, dtype=int)
-        self.fs_neighbor_distance = wp.zeros(self.n * 100, dtype=float)
+        self.fs_neighbor_list = wp.zeros(self.n * 60, dtype=int)
+        self.fs_neighbor_distance = wp.zeros(self.n * 60, dtype=float)
         self.fs_neighbor_list_index = wp.zeros(self.n, dtype=int)
 
         # set fluid
