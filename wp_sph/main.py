@@ -4,15 +4,16 @@ import warp as wp
 # Global variable settings
 
 GRAVITY = 9.8
-SMOOTHING_LENGTH = 0.8  # NOTE change this to adjust number of particles
+DIAMETER = 0.05
 OMEGA = 0.5
-RHO_0 = 1.0
-ETA = 1.0e-4
+RHO_0 = 1.0e3
 INV_SMALL = 1.0e-6
-
 
 ###########################################################################
 # Computed intermediate variables
-SIGMA = 8 / (wp.pi * SMOOTHING_LENGTH**3)
-SIG_INV_H = SIGMA / SMOOTHING_LENGTH
-FLUID_MASS = 0.3 * SMOOTHING_LENGTH**3  # reduce according to smoothing length
+ETA = wp.constant(1.0e-3 * RHO_0)
+SMOOTHING_LENGTH = wp.constant(2 * DIAMETER)
+TIME_STEP_MAX = 0.01 * SMOOTHING_LENGTH
+FLUID_MASS = wp.constant(RHO_0 * DIAMETER**3)
+SIGMA = wp.constant(8 / (wp.pi * SMOOTHING_LENGTH**3))
+SIG_INV_H = wp.constant(SIGMA / SMOOTHING_LENGTH)

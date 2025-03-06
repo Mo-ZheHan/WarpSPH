@@ -2,9 +2,9 @@ import warp as wp
 
 from ..main import *
 
-h = wp.constant(SMOOTHING_LENGTH)
-sigma = wp.constant(SIGMA)
-sig_inv_h = wp.constant(SIG_INV_H)
+h = SMOOTHING_LENGTH
+sigma = SIGMA
+sig_inv_h = SIG_INV_H
 
 ###########################################################################
 # smoothing kernels
@@ -35,11 +35,3 @@ def grad_spline_W(r: wp.vec3):
     elif q <= 0.5:
         tmp = 6.0 * (3.0 * q**2.0 - 2.0 * q)
     return tmp * sig_inv_h * wp.normalize(r)
-
-
-###########################################################################
-# decide timestep length
-
-
-def cfl_dt():
-    raise NotImplementedError

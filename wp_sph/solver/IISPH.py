@@ -29,19 +29,19 @@ def initialize_fluid(
     tid = wp.tid()
 
     # grid size
-    nr_x = wp.int32(width / 4.0 / SMOOTHING_LENGTH)
-    nr_y = wp.int32(height / SMOOTHING_LENGTH)
-    nr_z = wp.int32(length / 4.0 / SMOOTHING_LENGTH)
+    nr_x = wp.int32(width / 4.0 / DIAMETER)
+    nr_y = wp.int32(height / DIAMETER)
+    nr_z = wp.int32(length / 4.0 / DIAMETER)
 
     # calculate particle position
     z = wp.float(tid % nr_z)
     y = wp.float((tid // nr_z) % nr_y)
     x = wp.float((tid // (nr_z * nr_y)) % nr_x)
-    pos = SMOOTHING_LENGTH * wp.vec3(x, y, z)
+    pos = DIAMETER * wp.vec3(x, y, z)
 
     # add small jitter
     state = wp.rand_init(123, tid)
-    pos = pos + 0.001 * SMOOTHING_LENGTH * wp.vec3(
+    pos = pos + 0.001 * DIAMETER * wp.vec3(
         wp.randn(state), wp.randn(state), wp.randn(state)
     )
 
@@ -487,11 +487,14 @@ def kick(
     term_d_ii: wp.array(dtype=wp.vec3),
     sum_d_ij_p_j: wp.array(dtype=wp.vec3),
     particle_v: wp.array(dtype=wp.vec3),
+    particle_v_max: wp.array(dtype=float),
 ):
     tid = wp.tid()
-    particle_v[tid] = particle_v_adv[tid] + inv_dt * (
+    v = particle_v_adv[tid] + inv_dt * (
         term_d_ii[tid] * particle_p[tid] + sum_d_ij_p_j[tid]
     )
+    particle_v[tid] = v
+    wp.atomic_max(particle_v_max, 0, wp.length(v))
 
 
 @wp.kernel
@@ -514,34 +517,29 @@ class IISPH:
         self.sim_time = 0.0
 
         # simulation params
-        self.width = 40.0  # x
-        self.height = 40.0  # y
-        self.length = 40.0  # z
-        # self.dt = 0.01 * SMOOTHING_LENGTH  # decrease sim dt by smoothing length
-        self.dt = 0.01
+        self.width = 2.0  # x
+        self.height = 2.0  # y
+        self.length = 2.0  # z
+        self.dt = TIME_STEP_MAX
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
         self.n = int(
-            self.height
-            * (self.width / 4.0)
-            * (self.height / 4.0)
-            / (SMOOTHING_LENGTH**3)
+            self.height * (self.width / 4.0) * (self.height / 4.0) / (DIAMETER**3)
         )  # number particles (small box in corner)
-        self.grid_size = int(self.height / (4.0 * SMOOTHING_LENGTH))
 
         # set boundary
         self.boundary_x, self.boundary_n = initialize_box(
             self.width,
             self.height,
             self.length,
-            SMOOTHING_LENGTH,
+            DIAMETER,
             self.boundary_layer,
         )
         self.boundary_phi = wp.zeros(self.boundary_n, dtype=float)
         self.boundary_grid = wp.HashGrid(
-            self.grid_size,
-            self.grid_size,
-            self.grid_size,
+            int(self.width / SMOOTHING_LENGTH),
+            int(self.height / SMOOTHING_LENGTH),
+            int(self.length / SMOOTHING_LENGTH),
         )
         self.boundary_grid.build(self.boundary_x, SMOOTHING_LENGTH)
 
@@ -594,9 +592,9 @@ class IISPH:
 
         # create hash array
         self.fluid_grid = wp.HashGrid(
-            self.grid_size,
-            self.grid_size,
-            self.grid_size,
+            int(self.width / SMOOTHING_LENGTH),
+            int(self.height / SMOOTHING_LENGTH),
+            int(self.length / SMOOTHING_LENGTH),
         )
 
         # renderer
@@ -765,6 +763,7 @@ class IISPH:
                     loop += 1
 
             with wp.ScopedTimer("integration", active=self.verbose):
+                v_max = wp.zeros(1, dtype=float)
                 # kick
                 wp.launch(
                     kernel=kick,
@@ -776,7 +775,7 @@ class IISPH:
                         self.term_d_ii,
                         self.sum_d_ij_p_j,
                     ],
-                    outputs=[self.v],
+                    outputs=[self.v, v_max],
                 )
 
                 # drift
@@ -788,6 +787,10 @@ class IISPH:
                 )
 
             self.sim_time += self.dt
+            self.dt = wp.min(  # CFL condition
+                0.4 * SMOOTHING_LENGTH / v_max.numpy()[0], TIME_STEP_MAX
+            )
+            self.inv_dt = 1 / self.dt
 
     def render(self):
         if self.renderer is None:
@@ -797,15 +800,15 @@ class IISPH:
             self.renderer.begin_frame(self.sim_time)
             self.renderer.render_points(
                 points=self.x.numpy(),
-                radius=SMOOTHING_LENGTH,
+                radius=DIAMETER / 2.0,
                 name="fluid",
                 colors=(0.5, 0.5, 0.8),
             )
             self.renderer.render_points(
                 points=self.boundary_x.numpy(),
-                radius=SMOOTHING_LENGTH,
+                radius=wp.constant(DIAMETER / 1.4),
                 name="boundary",
-                colors=(0.0, 0.0, 0.5),
+                colors=(0.6, 0.7, 0.8),
             )
             self.renderer.end_frame()
 
