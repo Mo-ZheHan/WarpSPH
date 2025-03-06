@@ -22,16 +22,16 @@ from .sph_funcs import *  # TODO cache the functions
 @wp.kernel
 def initialize_fluid(
     particle_x: wp.array(dtype=wp.vec3),
-    width: float,
+    width: float,  # TODO remove the input
     height: float,
     length: float,
 ):
     tid = wp.tid()
 
     # grid size
-    nr_x = wp.int32(width / 4.0 / DIAMETER)
-    nr_y = wp.int32(height / DIAMETER)
-    nr_z = wp.int32(length / 4.0 / DIAMETER)
+    nr_x = wp.int32(width / 1.5 / DIAMETER)
+    nr_y = wp.int32(height / 1.2 / DIAMETER)
+    nr_z = wp.int32(length / 1.5 / DIAMETER)
 
     # calculate particle position
     z = wp.float(tid % nr_z)
@@ -50,13 +50,14 @@ def initialize_fluid(
     particle_x[tid] = pos + wp.vec3(width / 20.0, height / 20.0, length / 20.0)
 
 
+# TODO remove the input
 def initialize_box(width, height, length, spacing, layers):
     """
     Generate boundary particle positions for a box with exactly the specified number of layers.
     Creates boundary particles around a fluid domain, with open top.
     """
     x_range = range(-layers, int(width / spacing) + layers)
-    y_range = range(-layers, int(height / spacing))  # No top boundary
+    y_range = range(-layers, int(height / spacing) + layers)
     z_range = range(-layers, int(length / spacing) + layers)
 
     # Calculate domain bounds (interior region)
@@ -73,7 +74,8 @@ def initialize_box(width, height, length, spacing, layers):
                 is_outside = (
                     x_idx < x_min
                     or x_idx > x_max
-                    or y_idx < y_min  # No condition for y_max to keep top open
+                    or y_idx < y_min
+                    or y_idx > y_max
                     or z_idx < z_min
                     or z_idx > z_max
                 )
@@ -81,7 +83,8 @@ def initialize_box(width, height, length, spacing, layers):
                 is_within_layers = (
                     x_idx >= x_min - layers
                     and x_idx <= x_max + layers
-                    and y_idx >= y_min - layers  # No upper y constraint
+                    and y_idx >= y_min - layers
+                    and y_idx <= y_max + layers
                     and z_idx >= z_min - layers
                     and z_idx <= z_max + layers
                 )
@@ -504,9 +507,44 @@ def drift(
     dt: float,
     particle_v: wp.array(dtype=wp.vec3),
     particle_x: wp.array(dtype=wp.vec3),
+    penetration_times: wp.array(dtype=int),
 ):
     tid = wp.tid()
-    particle_x[tid] += particle_v[tid] * dt
+    new_pos = particle_x[tid] + particle_v[tid] * dt
+
+    # TODO remove this check
+    penetration_detected = False
+
+    if new_pos[0] < -3.0 * DIAMETER:
+        new_pos[0] = DIAMETER
+        particle_v[tid] = wp.vec3(0.0, particle_v[tid][1], particle_v[tid][2])
+        penetration_detected = True
+    elif new_pos[0] > BOX_WIDTH + 3.0 * DIAMETER:
+        new_pos[0] = BOX_WIDTH - DIAMETER
+        particle_v[tid] = wp.vec3(0.0, particle_v[tid][1], particle_v[tid][2])
+        penetration_detected = True
+
+    if new_pos[1] < -3.0 * DIAMETER:
+        new_pos[1] = DIAMETER
+        particle_v[tid] = wp.vec3(particle_v[tid][0], 0.0, particle_v[tid][2])
+        penetration_detected = True
+    elif new_pos[1] > BOX_HEIGHT + 3.0 * DIAMETER:
+        new_pos[1] = BOX_HEIGHT - DIAMETER
+        particle_v[tid] = wp.vec3(particle_v[tid][0], 0.0, particle_v[tid][2])
+        penetration_detected = True
+
+    if new_pos[2] < -3.0 * DIAMETER:
+        new_pos[2] = DIAMETER
+        particle_v[tid] = wp.vec3(particle_v[tid][0], particle_v[tid][1], 0.0)
+        penetration_detected = True
+    elif new_pos[2] > BOX_LENGTH + 3.0 * DIAMETER:
+        new_pos[2] = BOX_LENGTH - DIAMETER
+        particle_v[tid] = wp.vec3(particle_v[tid][0], particle_v[tid][1], 0.0)
+        penetration_detected = True
+
+    particle_x[tid] = new_pos
+    if penetration_detected:
+        wp.atomic_add(penetration_times, 0, 1)
 
 
 class IISPH:
@@ -519,29 +557,26 @@ class IISPH:
         self.sim_time = 0.0
 
         # simulation params
-        self.width = 2.0  # x
-        self.height = 2.0  # y
-        self.length = 2.0  # z
         self.dt = TIME_STEP_MAX
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
         self.n = int(
-            self.height * (self.width / 4.0) * (self.height / 4.0) / (DIAMETER**3)
+            (BOX_HEIGHT / 1.2) * (BOX_WIDTH / 1.5) * (BOX_HEIGHT / 1.5) / (DIAMETER**3)
         )  # number particles (small box in corner)
 
         # set boundary
         self.boundary_x, self.boundary_n = initialize_box(
-            self.width,
-            self.height,
-            self.length,
+            BOX_WIDTH,
+            BOX_HEIGHT,
+            BOX_LENGTH,
             DIAMETER,
             self.boundary_layer,
         )
         self.boundary_phi = wp.zeros(self.boundary_n, dtype=float)
         self.boundary_grid = wp.HashGrid(
-            int(self.width / SMOOTHING_LENGTH),
-            int(self.height / SMOOTHING_LENGTH),
-            int(self.length / SMOOTHING_LENGTH),
+            int(BOX_WIDTH / SMOOTHING_LENGTH),
+            int(BOX_HEIGHT / SMOOTHING_LENGTH),
+            int(BOX_LENGTH / SMOOTHING_LENGTH),
         )
         self.boundary_grid.build(self.boundary_x, SMOOTHING_LENGTH)
 
@@ -579,6 +614,7 @@ class IISPH:
         self.fs_neighbor_list = wp.zeros(self.n * 60, dtype=int)
         self.fs_neighbor_distance = wp.zeros(self.n * 60, dtype=float)
         self.fs_neighbor_list_index = wp.zeros(self.n, dtype=int)
+        self.penetration_times = wp.zeros(1, dtype=int)
 
         # set fluid
         wp.launch(
@@ -586,17 +622,17 @@ class IISPH:
             dim=self.n,
             inputs=[
                 self.x,
-                self.width,
-                self.height,
-                self.length,
+                BOX_WIDTH,
+                BOX_HEIGHT,
+                BOX_LENGTH,
             ],
         )
 
         # create hash array
         self.fluid_grid = wp.HashGrid(
-            int(self.width / SMOOTHING_LENGTH),
-            int(self.height / SMOOTHING_LENGTH),
-            int(self.length / SMOOTHING_LENGTH),
+            int(BOX_WIDTH / SMOOTHING_LENGTH),
+            int(BOX_HEIGHT / SMOOTHING_LENGTH),
+            int(BOX_LENGTH / SMOOTHING_LENGTH),
         )
 
         # renderer
@@ -785,7 +821,10 @@ class IISPH:
                     kernel=drift,
                     dim=self.n,
                     inputs=[self.dt, self.v],
-                    outputs=[self.x],
+                    outputs=[
+                        self.x,
+                        self.penetration_times,
+                    ],
                 )
 
             self.sim_time += self.dt
@@ -806,12 +845,12 @@ class IISPH:
                 name="fluid",
                 colors=(0.5, 0.5, 0.8),
             )
-            self.renderer.render_points(
-                points=self.boundary_x.numpy(),
-                radius=wp.constant(DIAMETER / 1.4),
-                name="boundary",
-                colors=(0.6, 0.7, 0.8),
-            )
+            # self.renderer.render_points(
+            #     points=self.boundary_x.numpy(),
+            #     radius=wp.constant(DIAMETER / 1.4),
+            #     name="boundary",
+            #     colors=(0.6, 0.7, 0.8),
+            # )
             self.renderer.end_frame()
 
     def neighbor_search(self):

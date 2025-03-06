@@ -9,6 +9,11 @@ OMEGA = 0.5
 RHO_0 = 1.0e3
 INV_SMALL = 1.0e-6
 
+# Scene settings
+BOX_WIDTH = 1.2
+BOX_HEIGHT = 1.2
+BOX_LENGTH = 1.2
+
 ###########################################################################
 # Computed intermediate variables
 ETA = wp.constant(1.0e-3 * RHO_0)

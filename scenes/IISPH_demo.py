@@ -19,7 +19,7 @@ parser.add_argument(
     help="Path to the output USD file.",
 )
 parser.add_argument(
-    "--num_frames", type=int, default=6000, help="Total number of frames."
+    "--num_frames", type=int, default=20000, help="Total number of frames."
 )
 parser.add_argument(
     "--verbose",
@@ -38,3 +38,7 @@ with wp.ScopedDevice(args.device):
 
     if sph_demo.renderer:
         sph_demo.renderer.save()
+
+    print(
+        f"Done. {sph_demo.penetration_times} potential particle penetrations detected."
+    )
