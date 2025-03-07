@@ -29,9 +29,9 @@ def initialize_fluid(
     tid = wp.tid()
 
     # grid size
-    nr_x = wp.int32(width / 2.5 / DIAMETER)
+    nr_x = wp.int32(width / 2.0 / DIAMETER)
     nr_y = wp.int32(height / 1.5 / DIAMETER)
-    nr_z = wp.int32(length / 2.5 / DIAMETER)
+    nr_z = wp.int32(length / 2.0 / DIAMETER)
 
     # calculate particle position
     z = wp.float(tid % nr_z)
@@ -41,20 +41,18 @@ def initialize_fluid(
 
     # add small jitter
     state = wp.rand_init(123, tid)
-    pos = pos + 0.001 * DIAMETER * wp.vec3(
+    pos = pos + 0.01 * DIAMETER * wp.vec3(
         wp.randn(state), wp.randn(state), wp.randn(state)
     )
 
     # set position
     # TODO remove the offset
-    particle_x[tid] = pos + wp.vec3(width / 20.0, height / 20.0, length / 20.0)
+    particle_x[tid] = pos + wp.vec3(width / 6.0, height / 4.0, length / 6.0)
 
 
-# TODO remove the input
 def initialize_box(width, height, length, spacing, layers):
     """
     Generate boundary particle positions for a box with exactly the specified number of layers.
-    Creates boundary particles around a fluid domain, with open top.
     """
     x_range = range(-layers, int(width / spacing) + layers)
     y_range = range(-layers, int(height / spacing) + layers)
@@ -109,22 +107,25 @@ def compute_boundary_density(
 ):
     tid = wp.tid()
 
-    # order threads by cell
-    i = wp.hash_grid_point_id(boundary_grid, tid)
+    # # order threads by cell
+    # i = wp.hash_grid_point_id(boundary_grid, tid)
 
-    # get local particle variables
-    x = boundary_x[i]
+    # # get local particle variables
+    # x = boundary_x[i]
 
-    # store density
-    rho = float(0.0)
+    # # store density
+    # rho = float(0.0)
 
-    # loop through neighbors to compute density
-    for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):
-        distance = wp.length(x - boundary_x[index])
-        if distance < SMOOTHING_LENGTH:
-            rho += spline_W(distance)
+    # # loop through neighbors to compute density
+    # for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):
+    #     distance = wp.length(x - boundary_x[index])
+    #     if distance < SMOOTHING_LENGTH:
+    #         rho += spline_W(distance)
 
-    boundary_phi[i] = RHO_0 / rho
+    # boundary_phi[i] = RHO_0 / rho
+
+    # TODO check this
+    boundary_phi[tid] = FLUID_MASS
 
 
 @wp.kernel
@@ -563,7 +564,7 @@ class IISPH:
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
         self.n = int(
-            (BOX_HEIGHT / 1.5) * (BOX_WIDTH / 2.5) * (BOX_HEIGHT / 2.5) / (DIAMETER**3)
+            (BOX_HEIGHT / 1.5) * (BOX_WIDTH / 2.0) * (BOX_HEIGHT / 2.0) / (DIAMETER**3)
         )  # number particles (small box in corner)
 
         # set boundary
