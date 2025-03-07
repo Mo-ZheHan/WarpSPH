@@ -19,49 +19,40 @@ from ..main import *
 from .sph_funcs import *  # TODO cache the functions
 
 
-@wp.kernel
-def initialize_fluid(
-    particle_x: wp.array(dtype=wp.vec3),
-    width: float,  # TODO remove the input
-    height: float,
-    length: float,
-):
-    tid = wp.tid()
+def initialize_fluid(min_point, max_point, spacing):
+    """
+    Generate fluid particles in a rectangular region using numpy's meshgrid.
+    """
+    assert 0 < min_point[0] < max_point[0] < BOX_WIDTH
+    assert 0 < min_point[1] < max_point[1] < BOX_HEIGHT
+    assert 0 < min_point[2] < max_point[2] < BOX_LENGTH
 
-    # grid size
-    nr_x = wp.int32(width / 2.0 / DIAMETER)
-    nr_y = wp.int32(height / 1.5 / DIAMETER)
-    nr_z = wp.int32(length / 2.0 / DIAMETER)
+    x = np.arange(min_point[0], max_point[0], spacing)
+    y = np.arange(min_point[1], max_point[1], spacing)
+    z = np.arange(min_point[2], max_point[2], spacing)
 
-    # calculate particle position
-    z = wp.float(tid % nr_z)
-    y = wp.float((tid // nr_z) % nr_y)
-    x = wp.float((tid // (nr_z * nr_y)) % nr_x)
-    pos = DIAMETER * wp.vec3(x, y, z)
+    # Create 3D grid of positions
+    xx, yy, zz = np.meshgrid(x, y, z, indexing="ij")
+    positions = np.stack([xx.ravel(), yy.ravel(), zz.ravel()]).T
 
-    # add small jitter
-    state = wp.rand_init(123, tid)
-    pos = pos + 0.01 * DIAMETER * wp.vec3(
-        wp.randn(state), wp.randn(state), wp.randn(state)
-    )
+    # Convert to warp array
+    particles_array = wp.array(positions, dtype=wp.vec3)
 
-    # set position
-    # TODO remove the offset
-    particle_x[tid] = pos + wp.vec3(width / 6.0, height / 4.0, length / 6.0)
+    return particles_array, positions.shape[0]
 
 
-def initialize_box(width, height, length, spacing, layers):
+def initialize_box(layers, spacing):
     """
     Generate boundary particle positions for a box with exactly the specified number of layers.
     """
-    x_range = range(-layers, int(width / spacing) + layers)
-    y_range = range(-layers, int(height / spacing) + layers)
-    z_range = range(-layers, int(length / spacing) + layers)
+    x_range = range(-layers, int(BOX_WIDTH / spacing) + layers)
+    y_range = range(-layers, int(BOX_HEIGHT / spacing) + layers)
+    z_range = range(-layers, int(BOX_LENGTH / spacing) + layers)
 
     # Calculate domain bounds (interior region)
-    x_min, x_max = 0, int(width / spacing) - 1
-    y_min, y_max = 0, int(height / spacing) - 1
-    z_min, z_max = 0, int(length / spacing) - 1
+    x_min, x_max = 0, int(BOX_WIDTH / spacing) - 1
+    y_min, y_max = 0, int(BOX_HEIGHT / spacing) - 1
+    z_min, z_max = 0, int(BOX_LENGTH / spacing) - 1
 
     particles = []
 
@@ -516,38 +507,38 @@ def drift(
     new_pos = particle_x[tid] + particle_v[tid] * dt
 
     # TODO remove this check
-    penetration_detected = False
+    # penetration_detected = False
 
-    if new_pos[0] < -3.0 * DIAMETER:
-        new_pos[0] = DIAMETER
-        particle_v[tid] = wp.vec3(0.0, particle_v[tid][1], particle_v[tid][2])
-        penetration_detected = True
-    elif new_pos[0] > BOX_WIDTH + 3.0 * DIAMETER:
-        new_pos[0] = BOX_WIDTH - DIAMETER
-        particle_v[tid] = wp.vec3(0.0, particle_v[tid][1], particle_v[tid][2])
-        penetration_detected = True
+    # if new_pos[0] < -3.0 * DIAMETER:
+    #     new_pos[0] = DIAMETER
+    #     particle_v[tid] = wp.vec3(0.0, particle_v[tid][1], particle_v[tid][2])
+    #     penetration_detected = True
+    # elif new_pos[0] > BOX_WIDTH + 3.0 * DIAMETER:
+    #     new_pos[0] = BOX_WIDTH - DIAMETER
+    #     particle_v[tid] = wp.vec3(0.0, particle_v[tid][1], particle_v[tid][2])
+    #     penetration_detected = True
 
-    if new_pos[1] < -3.0 * DIAMETER:
-        new_pos[1] = DIAMETER
-        particle_v[tid] = wp.vec3(particle_v[tid][0], 0.0, particle_v[tid][2])
-        penetration_detected = True
-    elif new_pos[1] > BOX_HEIGHT + 3.0 * DIAMETER:
-        new_pos[1] = BOX_HEIGHT - DIAMETER
-        particle_v[tid] = wp.vec3(particle_v[tid][0], 0.0, particle_v[tid][2])
-        penetration_detected = True
+    # if new_pos[1] < -3.0 * DIAMETER:
+    #     new_pos[1] = DIAMETER
+    #     particle_v[tid] = wp.vec3(particle_v[tid][0], 0.0, particle_v[tid][2])
+    #     penetration_detected = True
+    # elif new_pos[1] > BOX_HEIGHT + 3.0 * DIAMETER:
+    #     new_pos[1] = BOX_HEIGHT - DIAMETER
+    #     particle_v[tid] = wp.vec3(particle_v[tid][0], 0.0, particle_v[tid][2])
+    #     penetration_detected = True
 
-    if new_pos[2] < -3.0 * DIAMETER:
-        new_pos[2] = DIAMETER
-        particle_v[tid] = wp.vec3(particle_v[tid][0], particle_v[tid][1], 0.0)
-        penetration_detected = True
-    elif new_pos[2] > BOX_LENGTH + 3.0 * DIAMETER:
-        new_pos[2] = BOX_LENGTH - DIAMETER
-        particle_v[tid] = wp.vec3(particle_v[tid][0], particle_v[tid][1], 0.0)
-        penetration_detected = True
+    # if new_pos[2] < -3.0 * DIAMETER:
+    #     new_pos[2] = DIAMETER
+    #     particle_v[tid] = wp.vec3(particle_v[tid][0], particle_v[tid][1], 0.0)
+    #     penetration_detected = True
+    # elif new_pos[2] > BOX_LENGTH + 3.0 * DIAMETER:
+    #     new_pos[2] = BOX_LENGTH - DIAMETER
+    #     particle_v[tid] = wp.vec3(particle_v[tid][0], particle_v[tid][1], 0.0)
+    #     penetration_detected = True
 
     particle_x[tid] = new_pos
-    if penetration_detected:
-        wp.atomic_add(penetration_times, 0, 1)
+    # if penetration_detected:
+    #     wp.atomic_add(penetration_times, 0, 1)
 
 
 class IISPH:
@@ -563,39 +554,28 @@ class IISPH:
         self.dt = TIME_STEP_MAX
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
-        self.n = int(
-            (BOX_HEIGHT / 1.5) * (BOX_WIDTH / 2.0) * (BOX_HEIGHT / 2.0) / (DIAMETER**3)
-        )  # number particles (small box in corner)
+
+        # set fluid
+        min_point = (BOX_WIDTH * 0.1, BOX_HEIGHT * 0.1, BOX_LENGTH * 0.1)
+        max_point = (BOX_WIDTH * 0.9, BOX_HEIGHT * 0.4, BOX_LENGTH * 0.9)
+        self.x, self.n = initialize_fluid(min_point, max_point, DIAMETER)
 
         # set boundary
-        self.boundary_x, self.boundary_n = initialize_box(
-            BOX_WIDTH,
-            BOX_HEIGHT,
-            BOX_LENGTH,
-            DIAMETER,
-            self.boundary_layer,
+        self.boundary_x, self.boundary_n = initialize_box(self.boundary_layer, DIAMETER)
+
+        # create hash array
+        self.fluid_grid = wp.HashGrid(
+            int(BOX_WIDTH / SMOOTHING_LENGTH),
+            int(BOX_HEIGHT / SMOOTHING_LENGTH),
+            int(BOX_LENGTH / SMOOTHING_LENGTH),
         )
-        self.boundary_phi = wp.zeros(self.boundary_n, dtype=float)
         self.boundary_grid = wp.HashGrid(
             int(BOX_WIDTH / SMOOTHING_LENGTH),
             int(BOX_HEIGHT / SMOOTHING_LENGTH),
             int(BOX_LENGTH / SMOOTHING_LENGTH),
         )
-        self.boundary_grid.build(self.boundary_x, SMOOTHING_LENGTH)
-
-        # compute PHI value of boundary particles
-        wp.launch(
-            kernel=compute_boundary_density,
-            dim=self.boundary_n,
-            inputs=[
-                self.boundary_grid.id,
-                self.boundary_x,
-            ],
-            outputs=[self.boundary_phi],
-        )
 
         # allocate arrays
-        self.x = wp.empty(self.n, dtype=wp.vec3)
         self.v = wp.zeros(self.n, dtype=wp.vec3)
         self.v_adv = wp.zeros(self.n, dtype=wp.vec3)
         self.rho = wp.zeros(self.n, dtype=float)
@@ -617,25 +597,19 @@ class IISPH:
         self.fs_neighbor_list = wp.zeros(self.n * 60, dtype=int)
         self.fs_neighbor_distance = wp.zeros(self.n * 60, dtype=float)
         self.fs_neighbor_list_index = wp.zeros(self.n, dtype=int)
-        self.penetration_times = wp.zeros(1, dtype=int)
+        self.boundary_phi = wp.zeros(self.boundary_n, dtype=float)
+        self.penetration_times = wp.zeros(1, dtype=int)  # TODO remove this
 
-        # set fluid
+        # compute PHI value of boundary particles
+        self.boundary_grid.build(self.boundary_x, SMOOTHING_LENGTH)
         wp.launch(
-            kernel=initialize_fluid,
-            dim=self.n,
+            kernel=compute_boundary_density,
+            dim=self.boundary_n,
             inputs=[
-                self.x,
-                BOX_WIDTH,
-                BOX_HEIGHT,
-                BOX_LENGTH,
+                self.boundary_grid.id,
+                self.boundary_x,
             ],
-        )
-
-        # create hash array
-        self.fluid_grid = wp.HashGrid(
-            int(BOX_WIDTH / SMOOTHING_LENGTH),
-            int(BOX_HEIGHT / SMOOTHING_LENGTH),
-            int(BOX_LENGTH / SMOOTHING_LENGTH),
+            outputs=[self.boundary_phi],
         )
 
         # renderer
@@ -643,10 +617,11 @@ class IISPH:
             self.renderer = wp.render.UsdRenderer(stage_path)
         elif MODE == Mode.DEBUG:
             renderer = wp.render.OpenGLRenderer(
-                scaling=3,
-                screen_width=2560,
-                screen_height=1440,
+                scaling=8,
+                screen_width=1000,
+                screen_height=1000,
                 draw_axis=False,
+                camera_pos=(1.4, 1.0, 10.0),
             )
 
             def custom_input_processor(key_handler):

@@ -19,9 +19,9 @@ RHO_0 = 1.0e3
 INV_SMALL = 1.0e-6
 
 # Scene settings
-BOX_WIDTH = 0.8
-BOX_HEIGHT = 0.8
-BOX_LENGTH = 0.8
+BOX_WIDTH = 0.4
+BOX_HEIGHT = 0.4
+BOX_LENGTH = 0.4
 
 ###########################################################################
 # Computed intermediate variables
