@@ -32,13 +32,20 @@ args = parser.parse_known_args()[0]
 with wp.ScopedDevice(args.device):
     sph_demo = wsph.solver.IISPH(stage_path=args.stage_path, verbose=args.verbose)
 
-    for _ in range(args.num_frames):
-        sph_demo.render()
-        sph_demo.step()
+    if wsph.MODE == wsph.Mode.DEBUG:
+        sph_demo.renderer.paused = True
+        for _ in range(args.num_frames):
+            sph_demo.step()
+            sph_demo.render()
+            if sph_demo.window_closed:
+                break
+        print(
+            f"Done. {sph_demo.penetration_times} potential particle penetrations detected."
+        )
+    else:
+        for _ in range(args.num_frames):
+            sph_demo.step()
+            sph_demo.render()
 
     if sph_demo.renderer:
         sph_demo.renderer.save()
-
-    print(
-        f"Done. {sph_demo.penetration_times} potential particle penetrations detected."
-    )

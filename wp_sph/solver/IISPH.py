@@ -29,9 +29,9 @@ def initialize_fluid(
     tid = wp.tid()
 
     # grid size
-    nr_x = wp.int32(width / 1.5 / DIAMETER)
-    nr_y = wp.int32(height / 1.2 / DIAMETER)
-    nr_z = wp.int32(length / 1.5 / DIAMETER)
+    nr_x = wp.int32(width / 2.5 / DIAMETER)
+    nr_y = wp.int32(height / 1.5 / DIAMETER)
+    nr_z = wp.int32(length / 2.5 / DIAMETER)
 
     # calculate particle position
     z = wp.float(tid % nr_z)
@@ -229,8 +229,8 @@ def compute_density(
         term_2 += spline_W(fs_neighbor_distance[j]) * boundary_phi[fs_neighbor_list[j]]
 
     # TODO check this clamp
-    # fluid_rho[i] = term_1 * FLUID_MASS + term_2
-    fluid_rho[i] = wp.max(term_1 * FLUID_MASS + term_2, RHO_0)
+    fluid_rho[i] = term_1 * FLUID_MASS + term_2
+    # fluid_rho[i] = wp.max(term_1 * FLUID_MASS + term_2, RHO_0)
 
 
 @wp.kernel
@@ -288,7 +288,8 @@ def predict_rho_adv(
         nabla_W_ib = grad_spline_W(boundary_x[fs_neighbor_list[j]] - x)
         term_2 += wp.dot(v_adv, nabla_W_ib) * boundary_phi[fs_neighbor_list[j]]
 
-    fluid_rho_adv[i] = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
+    rho_adv = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
+    fluid_rho_adv[i] = wp.max(rho_adv, RHO_0)
 
 
 @wp.kernel
@@ -480,8 +481,9 @@ def update_p_rho(
     if term_a_ii_i > -INV_SMALL and term_a_ii_i < INV_SMALL:
         term_a_ii_i = wp.sign(term_a_ii_i) * INV_SMALL
 
+    # TODO check this clamp
     particle_p[i] += (RHO_0 - updated_rho) * OMEGA / term_a_ii_i
-    particle_p[i] = wp.max(particle_p[i], 0.0)
+    # particle_p[i] = wp.max(particle_p[i], 0.0)
 
 
 @wp.kernel
@@ -561,7 +563,7 @@ class IISPH:
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
         self.n = int(
-            (BOX_HEIGHT / 1.2) * (BOX_WIDTH / 1.5) * (BOX_HEIGHT / 1.5) / (DIAMETER**3)
+            (BOX_HEIGHT / 1.5) * (BOX_WIDTH / 2.5) * (BOX_HEIGHT / 2.5) / (DIAMETER**3)
         )  # number particles (small box in corner)
 
         # set boundary
@@ -636,7 +638,35 @@ class IISPH:
         )
 
         # renderer
-        self.renderer = wp.render.UsdRenderer(stage_path) if stage_path else None
+        if stage_path and MODE == Mode.DEFAULT:
+            self.renderer = wp.render.UsdRenderer(stage_path)
+        elif MODE == Mode.DEBUG:
+            renderer = wp.render.OpenGLRenderer(
+                scaling=3,
+                screen_width=2560,
+                screen_height=1440,
+                draw_axis=False,
+            )
+
+            def custom_input_processor(key_handler):
+                import pyglet
+
+                if key_handler[pyglet.window.key.E]:
+                    renderer._camera_pos += renderer._camera_up * (
+                        renderer._camera_speed * renderer._frame_speed
+                    )
+                    renderer.update_view_matrix()
+                if key_handler[pyglet.window.key.Q]:
+                    renderer._camera_pos -= renderer._camera_up * (
+                        renderer._camera_speed * renderer._frame_speed
+                    )
+                    renderer.update_view_matrix()
+
+            renderer.register_input_processor(custom_input_processor)
+            self.renderer = renderer
+
+        else:
+            self.renderer = None
 
     def step(self):  # TODO use CUDA graph capture
         with wp.ScopedTimer("step"):
@@ -880,6 +910,7 @@ class IISPH:
             ],
         )
 
+        # TODO remove this print
         print(
             f"Completed search for fluid neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.ff_neighbor_list.shape[0]}."
         )
@@ -919,6 +950,7 @@ class IISPH:
             ],
         )
 
+        # TODO remove this print
         print(
             f"Completed search for boundary neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.fs_neighbor_list.shape[0]}."
         )
@@ -947,3 +979,10 @@ class IISPH:
     @property
     def average_rho(self):
         return self.sum_rho.numpy()[0] / self.n
+
+    @property
+    def window_closed(self):
+        if MODE == Mode.DEBUG:
+            return self.renderer.has_exit
+        else:
+            return False
