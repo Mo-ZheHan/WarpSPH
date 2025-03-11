@@ -120,7 +120,64 @@ def compute_boundary_density(
 
 
 @wp.kernel
-def count_neighbor(
+def count_same_neighbor(
+    grid: wp.uint64,
+    neighbor_grid: wp.uint64,
+    particle_x: wp.array(dtype=wp.vec3),
+    neighbor_pointer: wp.array(dtype=int),
+    neighbor_num: wp.array(dtype=int),
+    neighbor_list_index: wp.array(dtype=int),
+):
+    tid = wp.tid()
+    neighbor_id = wp.int32(0)
+
+    # order threads by cell
+    i = wp.hash_grid_point_id(grid, tid)
+
+    # get local particle variables
+    x = particle_x[i]
+
+    # count neighbors
+    for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):
+        distance = wp.length(x - particle_x[index])
+        if distance < SMOOTHING_LENGTH and index != i:
+            neighbor_id += 1
+
+    # store number of neighbors
+    neighbor_num[i] = neighbor_id
+    neighbor_list_index[i] = wp.atomic_add(neighbor_pointer, 0, neighbor_id)
+
+
+@wp.kernel
+def store_same_neighbor(
+    grid: wp.uint64,
+    neighbor_grid: wp.uint64,
+    particle_x: wp.array(dtype=wp.vec3),
+    neighbor_list_index: wp.array(dtype=int),
+    neighbor_list: wp.array(dtype=int),
+    neighbor_distance: wp.array(dtype=float),
+):
+    tid = wp.tid()
+    neighbor_id = wp.int32(0)
+
+    # order threads by cell
+    i = wp.hash_grid_point_id(grid, tid)
+    start_index = neighbor_list_index[i]
+
+    # get local particle variables
+    x = particle_x[i]
+
+    # store neighbors
+    for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):
+        distance = wp.length(x - particle_x[index])
+        if distance < SMOOTHING_LENGTH and index != i:
+            neighbor_list[start_index + neighbor_id] = index
+            neighbor_distance[start_index + neighbor_id] = distance
+            neighbor_id += 1
+
+
+@wp.kernel
+def count_diff_neighbor(
     grid: wp.uint64,
     neighbor_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
@@ -150,7 +207,7 @@ def count_neighbor(
 
 
 @wp.kernel
-def store_neighbor(
+def store_diff_neighbor(
     grid: wp.uint64,
     neighbor_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
@@ -221,8 +278,10 @@ def compute_density(
         term_2 += spline_W(fs_neighbor_distance[j]) * boundary_phi[fs_neighbor_list[j]]
 
     # TODO check this clamp
-    fluid_rho[i] = term_1 * FLUID_MASS + term_2
-    # fluid_rho[i] = wp.max(term_1 * FLUID_MASS + term_2, RHO_0)
+    fluid_rho[i] = term_1 * FLUID_MASS + term_2 + spline_W(0.0) * FLUID_MASS
+    # fluid_rho[i] = wp.max(
+    #     term_1 * FLUID_MASS + term_2 + spline_W(0.0) * FLUID_MASS, RHO_0
+    # )
 
 
 @wp.kernel
@@ -902,12 +961,11 @@ class IISPH:
         neighbor_pointer = wp.zeros(1, dtype=int)
 
         wp.launch(
-            kernel=count_neighbor,
+            kernel=count_same_neighbor,
             dim=self.n,
             inputs=[
                 self.fluid_grid.id,
                 self.fluid_grid.id,
-                self.x,
                 self.x,
             ],
             outputs=[
@@ -923,12 +981,11 @@ class IISPH:
         # )
 
         wp.launch(
-            kernel=store_neighbor,
+            kernel=store_same_neighbor,
             dim=self.n,
             inputs=[
                 self.fluid_grid.id,
                 self.fluid_grid.id,
-                self.x,
                 self.x,
                 self.ff_neighbor_list_index,
             ],
@@ -942,7 +999,7 @@ class IISPH:
         neighbor_pointer = wp.zeros(1, dtype=int)
 
         wp.launch(
-            kernel=count_neighbor,
+            kernel=count_diff_neighbor,
             dim=self.n,
             inputs=[
                 self.fluid_grid.id,
@@ -963,7 +1020,7 @@ class IISPH:
         # )
 
         wp.launch(
-            kernel=store_neighbor,
+            kernel=store_diff_neighbor,
             dim=self.n,
             inputs=[
                 self.fluid_grid.id,
