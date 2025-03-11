@@ -15,6 +15,7 @@ MODE = Mode.DEBUG
 GRAVITY = 9.8
 DIAMETER = 0.05
 OMEGA = 0.5
+ETA = 1.0e-3
 RHO_0 = 1.0e3
 INV_SMALL = 1.0e-6
 
@@ -25,7 +26,6 @@ BOX_LENGTH = 0.4
 
 ###########################################################################
 # Computed intermediate variables
-ETA = wp.constant(1.0e-3 * RHO_0)
 SMOOTHING_LENGTH = wp.constant(2 * DIAMETER)
 TIME_STEP_MAX = 0.01 * SMOOTHING_LENGTH
 FLUID_MASS = wp.constant(RHO_0 * DIAMETER**3)

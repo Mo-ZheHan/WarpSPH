@@ -531,7 +531,7 @@ def update_p_rho(
     term_a_ii: wp.array(dtype=float),
     term_Ap_i: wp.array(dtype=float),
     particle_p: wp.array(dtype=float),
-    sum_rho: wp.array(dtype=float),
+    sum_rho_error: wp.array(dtype=float),
 ):
     tid = wp.tid()
 
@@ -539,7 +539,7 @@ def update_p_rho(
     i = wp.hash_grid_point_id(fluid_grid, tid)
 
     updated_rho = fluid_rho_adv[i] + term_Ap_i[i]
-    wp.atomic_add(sum_rho, 0, updated_rho)
+    wp.atomic_add(sum_rho_error, 0, wp.abs(updated_rho / RHO_0 - 1.0))
 
     # TODO check this clamp
     term_a_ii_i = term_a_ii[i]
@@ -655,7 +655,7 @@ class IISPH:
         self.rho_adv = wp.zeros(self.n, dtype=float)
         self.a = wp.zeros(self.n, dtype=wp.vec3)
         self.p = wp.zeros(self.n, dtype=float)
-        self.sum_rho = wp.zeros(1, dtype=float)
+        self.sum_rho_error = wp.zeros(1, dtype=float)
         self.term_a_ii = wp.zeros(self.n, dtype=float)
         self.term_d_ii = wp.zeros(self.n, dtype=wp.vec3)
         self.term_d_ij = wp.zeros(self.n * 60, dtype=wp.vec3)
@@ -830,7 +830,7 @@ class IISPH:
 
             with wp.ScopedTimer("pressure solve", active=self.verbose):
                 loop = 0
-                while (loop < 2) or (self.average_rho - RHO_0 > ETA):
+                while (loop < 2) or (self.average_rho_error > ETA):
                     if loop > 100:
                         self.raise_error("Pressure solver did not converge.")
 
@@ -878,7 +878,7 @@ class IISPH:
                         ],
                     )
 
-                    self.sum_rho = wp.zeros(1, dtype=float)
+                    self.sum_rho_error = wp.zeros(1, dtype=float)
                     wp.launch(
                         kernel=update_p_rho,
                         dim=self.n,
@@ -890,7 +890,7 @@ class IISPH:
                         ],
                         outputs=[
                             self.p,
-                            self.sum_rho,
+                            self.sum_rho_error,
                         ],
                     )
 
@@ -1041,8 +1041,8 @@ class IISPH:
         raise RuntimeError(message)
 
     @property
-    def average_rho(self):
-        return self.sum_rho.numpy()[0] / self.n
+    def average_rho_error(self):
+        return self.sum_rho_error.numpy()[0] / self.n
 
     @property
     def window_closed(self):
