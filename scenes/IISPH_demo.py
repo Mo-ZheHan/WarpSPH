@@ -39,9 +39,9 @@ with wp.ScopedDevice(args.device):
             sph_demo.render()
             if sph_demo.window_closed:
                 break
-        print(
-            f"Done. {sph_demo.penetration_times} potential particle penetrations detected."
-        )
+        # print( # TODO: remove this
+        #     f"Done. {sph_demo.penetration_times} potential particle penetrations detected."
+        # )
     else:
         for _ in range(args.num_frames):
             sph_demo.step()

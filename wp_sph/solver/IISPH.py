@@ -380,7 +380,44 @@ def compute_term_a(
 
 
 @wp.kernel
-def compute_term_Ap(  # TODO check again
+def compute_term_Ap_1(  # TODO check again
+    fluid_grid: wp.uint64,
+    particle_x: wp.array(dtype=wp.vec3),
+    particle_p: wp.array(dtype=float),
+    ff_neighbor_num: wp.array(dtype=int),
+    ff_neighbor_list: wp.array(dtype=int),
+    ff_neighbor_list_index: wp.array(dtype=int),
+    term_d_ii: wp.array(dtype=wp.vec3),
+    term_d_ij: wp.array(dtype=wp.vec3),
+    term_d_ji: wp.array(dtype=wp.vec3),
+    sum_d_ij_p_j: wp.array(dtype=wp.vec3),
+    term_Ap_i: wp.array(dtype=float),
+):
+    tid = wp.tid()
+
+    # order threads by cell
+    i = wp.hash_grid_point_id(fluid_grid, tid)
+
+    # init terms
+    term_1 = float(0.0)
+
+    x = particle_x[i]
+    sum_d_ij_p_j[i] = wp.vec3(0.0)
+
+    # loop through neighbors to compute density
+    for j in range(
+        ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
+    ):
+        index = ff_neighbor_list[j]
+        term = term_d_ji[j] * particle_p[i] - term_d_ii[index] * particle_p[index]
+        term_1 += wp.dot(term, grad_spline_W(particle_x[index] - x))
+        sum_d_ij_p_j[i] += term_d_ij[j] * particle_p[index]
+
+    term_Ap_i[i] = term_1 * FLUID_MASS
+
+
+@wp.kernel
+def compute_term_Ap_2(  # TODO check again
     fluid_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
     particle_p: wp.array(dtype=float),
@@ -392,9 +429,6 @@ def compute_term_Ap(  # TODO check again
     fs_neighbor_list: wp.array(dtype=int),
     fs_neighbor_list_index: wp.array(dtype=int),
     boundary_phi: wp.array(dtype=float),
-    term_d_ii: wp.array(dtype=wp.vec3),
-    term_d_ij: wp.array(dtype=wp.vec3),
-    term_d_ji: wp.array(dtype=wp.vec3),
     term_a_ii: wp.array(dtype=float),
     sum_d_ij_p_j: wp.array(dtype=wp.vec3),
     term_Ap_i: wp.array(dtype=float),
@@ -409,46 +443,26 @@ def compute_term_Ap(  # TODO check again
     term_2 = float(0.0)
 
     x = particle_x[i]
-    sum_d_ij_p_j[i] = wp.vec3(0.0)
+    sum_d_ij_p_j_i = sum_d_ij_p_j[i]
 
     # loop through neighbors to compute density
     for j in range(
         ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
     ):
         index = ff_neighbor_list[j]
-        d_jk_p_k = wp.vec3(0.0)
-        for k in range(
-            ff_neighbor_list_index[index],
-            ff_neighbor_list_index[index] + ff_neighbor_num[index],
-        ):
-            d_jk_p_k += term_d_ij[k] * particle_p[ff_neighbor_list[k]]
-
-        term = (
-            term_d_ji[j] * particle_p[i]
-            - term_d_ii[index] * particle_p[index]
-            - d_jk_p_k
-        )
-
-        term_1 += wp.dot(term, grad_spline_W(particle_x[index] - x))
-
-        sum_d_ij_p_j[i] += term_d_ij[j] * particle_p[index]
-
-    for j in range(
-        ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
-    ):
         term_1 += wp.dot(
-            sum_d_ij_p_j[i], grad_spline_W(particle_x[ff_neighbor_list[j]] - x)
+            sum_d_ij_p_j_i - sum_d_ij_p_j[index], grad_spline_W(particle_x[index] - x)
         )
 
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
         term_2 += (
-            wp.dot(sum_d_ij_p_j[i], grad_spline_W(boundary_x[fs_neighbor_list[j]] - x))
+            wp.dot(sum_d_ij_p_j_i, grad_spline_W(boundary_x[fs_neighbor_list[j]] - x))
             * boundary_phi[fs_neighbor_list[j]]
         )
 
-    term_Ap_i[i] = term_1 * FLUID_MASS + term_2 + term_a_ii[i] * particle_p[i]
+    term_Ap_i[i] += term_1 * FLUID_MASS + term_2 + term_a_ii[i] * particle_p[i]
 
 
 @wp.kernel
@@ -763,7 +777,27 @@ class IISPH:
 
                     # solve pressure
                     wp.launch(
-                        kernel=compute_term_Ap,
+                        kernel=compute_term_Ap_1,
+                        dim=self.n,
+                        inputs=[
+                            self.fluid_grid.id,
+                            self.x,
+                            self.p,
+                            self.ff_neighbor_num,
+                            self.ff_neighbor_list,
+                            self.ff_neighbor_list_index,
+                            self.term_d_ii,
+                            self.term_d_ij,
+                            self.term_d_ji,
+                        ],
+                        outputs=[
+                            self.sum_d_ij_p_j,
+                            self.term_Ap_i,
+                        ],
+                    )
+
+                    wp.launch(
+                        kernel=compute_term_Ap_2,
                         dim=self.n,
                         inputs=[
                             self.fluid_grid.id,
@@ -777,13 +811,10 @@ class IISPH:
                             self.fs_neighbor_list,
                             self.fs_neighbor_list_index,
                             self.boundary_phi,
-                            self.term_d_ii,
-                            self.term_d_ij,
-                            self.term_d_ji,
                             self.term_a_ii,
+                            self.sum_d_ij_p_j,
                         ],
                         outputs=[
-                            self.sum_d_ij_p_j,
                             self.term_Ap_i,
                         ],
                     )
@@ -887,9 +918,9 @@ class IISPH:
         )
 
         # TODO remove this print
-        print(
-            f"Completed search for fluid neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.ff_neighbor_list.shape[0]}."
-        )
+        # print(
+        #     f"Completed search for fluid neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.ff_neighbor_list.shape[0]}."
+        # )
 
         wp.launch(
             kernel=store_neighbor,
@@ -927,9 +958,9 @@ class IISPH:
         )
 
         # TODO remove this print
-        print(
-            f"Completed search for boundary neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.fs_neighbor_list.shape[0]}."
-        )
+        # print(
+        #     f"Completed search for boundary neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.fs_neighbor_list.shape[0]}."
+        # )
 
         wp.launch(
             kernel=store_neighbor,
