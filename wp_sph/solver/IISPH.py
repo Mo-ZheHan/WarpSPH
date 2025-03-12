@@ -554,8 +554,8 @@ def update_p_rho(
 
     # TODO check this clamp
     term_a_ii_i = term_a_ii[i]
-    # if term_a_ii_i > -INV_SMALL and term_a_ii_i < INV_SMALL:
-    #     term_a_ii_i = wp.sign(term_a_ii_i) * INV_SMALL
+    if term_a_ii_i > -INV_SMALL and term_a_ii_i < INV_SMALL:
+        term_a_ii_i = wp.sign(term_a_ii_i) * INV_SMALL
 
     # TODO check this clamp
     particle_p[i] += (RHO_0 - updated_rho) * OMEGA / term_a_ii_i
@@ -640,8 +640,8 @@ class IISPH:
         self.boundary_layer = 3
 
         # set fluid
-        min_point = (BOX_WIDTH * 0.1, BOX_HEIGHT * 0.1, BOX_LENGTH * 0.1)
-        max_point = (BOX_WIDTH * 0.9, BOX_HEIGHT * 0.4, BOX_LENGTH * 0.9)
+        min_point = (BOX_WIDTH * 0.1, BOX_HEIGHT * 0.05, BOX_LENGTH * 0.1)
+        max_point = (BOX_WIDTH * 0.9, BOX_HEIGHT * 0.3, BOX_LENGTH * 0.9)
         self.x, self.n = initialize_fluid(min_point, max_point, DIAMETER)
 
         # set boundary
@@ -704,11 +704,11 @@ class IISPH:
 
         if MODE == Mode.DEBUG:
             reviewer = wp.render.OpenGLRenderer(
-                scaling=8,
-                screen_width=1000,
-                screen_height=1000,
+                scaling=4,
+                screen_width=1200,
+                screen_height=1200,
                 draw_axis=False,
-                camera_pos=(1.4, 1.0, 10.0),
+                camera_pos=(2, 2, 9.5),
             )
 
             def custom_input_processor(key_handler):
