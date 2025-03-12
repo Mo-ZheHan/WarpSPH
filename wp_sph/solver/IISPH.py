@@ -105,12 +105,12 @@ def compute_boundary_density(
     # x = boundary_x[i]
 
     # # store density
-    # rho = float(0.0)
+    # rho = spline_W(0.0)
 
     # # loop through neighbors to compute density
     # for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):
     #     distance = wp.length(x - boundary_x[index])
-    #     if distance < SMOOTHING_LENGTH:
+    #     if distance < SMOOTHING_LENGTH and index != i:
     #         rho += spline_W(distance)
 
     # boundary_phi[i] = RHO_0 / rho
@@ -122,7 +122,6 @@ def compute_boundary_density(
 @wp.kernel
 def count_same_neighbor(
     grid: wp.uint64,
-    neighbor_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
     neighbor_pointer: wp.array(dtype=int),
     neighbor_num: wp.array(dtype=int),
@@ -138,7 +137,7 @@ def count_same_neighbor(
     x = particle_x[i]
 
     # count neighbors
-    for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):
+    for index in wp.hash_grid_query(grid, x, SMOOTHING_LENGTH):
         distance = wp.length(x - particle_x[index])
         if distance < SMOOTHING_LENGTH and index != i:
             neighbor_id += 1
@@ -151,8 +150,8 @@ def count_same_neighbor(
 @wp.kernel
 def store_same_neighbor(
     grid: wp.uint64,
-    neighbor_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
+    neighbor_num: wp.array(dtype=int),
     neighbor_list_index: wp.array(dtype=int),
     neighbor_list: wp.array(dtype=int),
     neighbor_distance: wp.array(dtype=float),
@@ -168,12 +167,16 @@ def store_same_neighbor(
     x = particle_x[i]
 
     # store neighbors
-    for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):
+    for index in wp.hash_grid_query(grid, x, SMOOTHING_LENGTH):
         distance = wp.length(x - particle_x[index])
         if distance < SMOOTHING_LENGTH and index != i:
             neighbor_list[start_index + neighbor_id] = index
             neighbor_distance[start_index + neighbor_id] = distance
             neighbor_id += 1
+
+    # TODO remove this check
+    if neighbor_id != neighbor_num[i]:
+        print("ERROR: Neighbor count mismatch.")
 
 
 @wp.kernel
@@ -212,6 +215,7 @@ def store_diff_neighbor(
     neighbor_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
     neighbor_x: wp.array(dtype=wp.vec3),
+    neighbor_num: wp.array(dtype=int),
     neighbor_list_index: wp.array(dtype=int),
     neighbor_list: wp.array(dtype=int),
     neighbor_distance: wp.array(dtype=float),
@@ -233,6 +237,10 @@ def store_diff_neighbor(
             neighbor_list[start_index + neighbor_id] = index
             neighbor_distance[start_index + neighbor_id] = distance
             neighbor_id += 1
+
+    # TODO remove this check
+    if neighbor_id != neighbor_num[i]:
+        print("ERROR: Neighbor count mismatch.")
 
 
 @wp.kernel
@@ -340,7 +348,7 @@ def predict_rho_adv(
         term_2 += wp.dot(v_adv, nabla_W_ib) * boundary_phi[fs_neighbor_list[j]]
 
     rho_adv = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
-    fluid_rho_adv[i] = wp.max(rho_adv, RHO_0)
+    fluid_rho_adv[i] = wp.max(rho_adv, RHO_0)  # TODO check this clamp
 
 
 @wp.kernel
@@ -380,7 +388,7 @@ def compute_term_d(  # TODO check again
     ):
         index = ff_neighbor_list[j]
         grad_W_ij = grad_spline_W(particle_x[index] - x)
-        term_1 -= grad_W_ij / rho**2.0
+        term_1 -= grad_W_ij
 
         term_d_ij[j] = -grad_W_ij * term_3 / fluid_rho[index] ** 2.0
         term_d_ji[j] = grad_W_ij * term_3 / rho**2.0
@@ -388,10 +396,11 @@ def compute_term_d(  # TODO check again
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
-        grad_W_ib = grad_spline_W(boundary_x[fs_neighbor_list[j]] - x)
-        term_2 -= grad_W_ib * boundary_phi[fs_neighbor_list[j]] / rho**2.0
+        index = fs_neighbor_list[j]
+        grad_W_ib = grad_spline_W(boundary_x[index] - x)
+        term_2 -= grad_W_ib * boundary_phi[index]
 
-    term_d_ii[i] = (term_1 * FLUID_MASS + term_2) * dt**2.0
+    term_d_ii[i] = (term_1 * FLUID_MASS + term_2) * dt**2.0 / rho**2.0
 
 
 @wp.kernel
@@ -432,8 +441,9 @@ def compute_term_a(
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
-        grad_W_ib = grad_spline_W(boundary_x[fs_neighbor_list[j]] - x)
-        term_2 += wp.dot(d_ii, grad_W_ib) * boundary_phi[fs_neighbor_list[j]]
+        index = fs_neighbor_list[j]
+        grad_W_ib = grad_spline_W(boundary_x[index] - x)
+        term_2 += wp.dot(d_ii, grad_W_ib) * boundary_phi[index]
 
     term_a_ii[i] = term_1 * FLUID_MASS + term_2
 
@@ -516,9 +526,10 @@ def compute_term_Ap_2(  # TODO check again
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
+        index = fs_neighbor_list[j]
         term_2 += (
-            wp.dot(sum_d_ij_p_j_i, grad_spline_W(boundary_x[fs_neighbor_list[j]] - x))
-            * boundary_phi[fs_neighbor_list[j]]
+            wp.dot(sum_d_ij_p_j_i, grad_spline_W(boundary_x[index] - x))
+            * boundary_phi[index]
         )
 
     term_Ap_i[i] += term_1 * FLUID_MASS + term_2 + term_a_ii[i] * particle_p[i]
@@ -543,8 +554,8 @@ def update_p_rho(
 
     # TODO check this clamp
     term_a_ii_i = term_a_ii[i]
-    if term_a_ii_i > -INV_SMALL and term_a_ii_i < INV_SMALL:
-        term_a_ii_i = wp.sign(term_a_ii_i) * INV_SMALL
+    # if term_a_ii_i > -INV_SMALL and term_a_ii_i < INV_SMALL:
+    #     term_a_ii_i = wp.sign(term_a_ii_i) * INV_SMALL
 
     # TODO check this clamp
     particle_p[i] += (RHO_0 - updated_rho) * OMEGA / term_a_ii_i
@@ -686,10 +697,13 @@ class IISPH:
         )
 
         # renderer
-        if stage_path and MODE == Mode.DEFAULT:
+        if stage_path:
             self.renderer = wp.render.UsdRenderer(stage_path)
-        elif MODE == Mode.DEBUG:
-            renderer = wp.render.OpenGLRenderer(
+        else:
+            self.renderer = None
+
+        if MODE == Mode.DEBUG:
+            reviewer = wp.render.OpenGLRenderer(
                 scaling=8,
                 screen_width=1000,
                 screen_height=1000,
@@ -701,21 +715,20 @@ class IISPH:
                 import pyglet
 
                 if key_handler[pyglet.window.key.E]:
-                    renderer._camera_pos += renderer._camera_up * (
-                        renderer._camera_speed * renderer._frame_speed
+                    reviewer._camera_pos += reviewer._camera_up * (
+                        reviewer._camera_speed * reviewer._frame_speed
                     )
-                    renderer.update_view_matrix()
+                    reviewer.update_view_matrix()
                 if key_handler[pyglet.window.key.Q]:
-                    renderer._camera_pos -= renderer._camera_up * (
-                        renderer._camera_speed * renderer._frame_speed
+                    reviewer._camera_pos -= reviewer._camera_up * (
+                        reviewer._camera_speed * reviewer._frame_speed
                     )
-                    renderer.update_view_matrix()
+                    reviewer.update_view_matrix()
 
-            renderer.register_input_processor(custom_input_processor)
-            self.renderer = renderer
-
+            reviewer.register_input_processor(custom_input_processor)
+            self.reviewer = reviewer
         else:
-            self.renderer = None
+            self.reviewer = None
 
     def step(self):  # TODO use CUDA graph capture
         with wp.ScopedTimer("step"):
@@ -925,29 +938,35 @@ class IISPH:
 
             self.sim_time += self.dt
             self.dt = wp.min(  # CFL condition
-                0.4 * SMOOTHING_LENGTH / v_max.numpy()[0], TIME_STEP_MAX
+                0.4 * DIAMETER / v_max.numpy()[0], TIME_STEP_MAX
             )
             self.inv_dt = 1 / self.dt
 
+    def activate_renderer(self, renderer):
+        renderer.begin_frame(self.sim_time)
+        renderer.render_points(
+            points=self.x.numpy(),
+            radius=DIAMETER / 2.0,
+            name="fluid",
+            colors=(0.5, 0.5, 0.8),
+        )
+        # renderer.render_points(
+        #     points=self.boundary_x.numpy(),
+        #     radius=wp.constant(DIAMETER / 1.4),
+        #     name="boundary",
+        #     colors=(0.6, 0.7, 0.8),
+        # )
+        renderer.end_frame()
+
     def render(self):
+        if self.reviewer:
+            self.activate_renderer(self.reviewer)
+
         if self.renderer is None:
             return
 
         with wp.ScopedTimer("render"):
-            self.renderer.begin_frame(self.sim_time)
-            self.renderer.render_points(
-                points=self.x.numpy(),
-                radius=DIAMETER / 2.0,
-                name="fluid",
-                colors=(0.5, 0.5, 0.8),
-            )
-            # self.renderer.render_points(
-            #     points=self.boundary_x.numpy(),
-            #     radius=wp.constant(DIAMETER / 1.4),
-            #     name="boundary",
-            #     colors=(0.6, 0.7, 0.8),
-            # )
-            self.renderer.end_frame()
+            self.activate_renderer(self.renderer)
 
     def neighbor_search(self):
         """
@@ -964,7 +983,6 @@ class IISPH:
             kernel=count_same_neighbor,
             dim=self.n,
             inputs=[
-                self.fluid_grid.id,
                 self.fluid_grid.id,
                 self.x,
             ],
@@ -985,8 +1003,8 @@ class IISPH:
             dim=self.n,
             inputs=[
                 self.fluid_grid.id,
-                self.fluid_grid.id,
                 self.x,
+                self.ff_neighbor_num,
                 self.ff_neighbor_list_index,
             ],
             outputs=[
@@ -1027,6 +1045,7 @@ class IISPH:
                 self.boundary_grid.id,
                 self.x,
                 self.boundary_x,
+                self.fs_neighbor_num,
                 self.fs_neighbor_list_index,
             ],
             outputs=[
@@ -1047,6 +1066,6 @@ class IISPH:
     @property
     def window_closed(self):
         if MODE == Mode.DEBUG:
-            return self.renderer.has_exit
+            return self.reviewer.has_exit
         else:
             return False

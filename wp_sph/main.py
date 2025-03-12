@@ -20,14 +20,14 @@ RHO_0 = 1.0e3
 INV_SMALL = 1.0e-6
 
 # Scene settings
-BOX_WIDTH = 0.4
-BOX_HEIGHT = 0.4
-BOX_LENGTH = 0.4
+BOX_WIDTH = 1.0
+BOX_HEIGHT = 1.0
+BOX_LENGTH = 1.0
 
 ###########################################################################
 # Computed intermediate variables
 SMOOTHING_LENGTH = wp.constant(2 * DIAMETER)
-TIME_STEP_MAX = 0.01 * SMOOTHING_LENGTH
+TIME_STEP_MAX = wp.constant(5e-3 * DIAMETER)
 FLUID_MASS = wp.constant(RHO_0 * DIAMETER**3)
 SIGMA = wp.constant(8 / (wp.pi * SMOOTHING_LENGTH**3))
 SIG_INV_H = wp.constant(SIGMA / SMOOTHING_LENGTH)

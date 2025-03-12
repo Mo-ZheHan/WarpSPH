@@ -104,24 +104,24 @@ files = [
 
 [[package]]
 name = "warp-lang"
-version = "1.6.1"
+version = "1.6.2"
 description = "A Python framework for high-performance simulation and graphics programming"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "warp_lang-1.6.1-py3-none-macosx_10_13_universal2.whl", hash = "sha256:ccae8d988c76b22ca62d7700491bfc67990c4b5361b64a6367d825a737431798"},
-    {file = "warp_lang-1.6.1-py3-none-manylinux2014_aarch64.whl", hash = "sha256:33e5bf10c060abe69749a9ab55e2afd411b4d4d0180573d8a06d9e69bfb0741d"},
-    {file = "warp_lang-1.6.1-py3-none-manylinux2014_x86_64.whl", hash = "sha256:a0155020f3f22f41b11eb5a0f2f7f01bae4a9c24db3137d35cb9f7e07be98ada"},
-    {file = "warp_lang-1.6.1-py3-none-win_amd64.whl", hash = "sha256:b327c84941c7826b5d84ce0c5441e71e507f475ee3ade921bdf60295338806f2"},
+    {file = "warp_lang-1.6.2-py3-none-macosx_10_13_universal2.whl", hash = "sha256:7aa1acf5bd46ed168183073d979dd202552826e5c5c58b310c4d8876f3b6fcdd"},
+    {file = "warp_lang-1.6.2-py3-none-manylinux2014_aarch64.whl", hash = "sha256:cba2c269ca19651664cf400a8bfaed99933cbd4b46065589be96cb7732e699b8"},
+    {file = "warp_lang-1.6.2-py3-none-manylinux2014_x86_64.whl", hash = "sha256:82874535e4ee0aa3362ed32f08c532e3d467c29e84fd5db6b6a34b9ef6cdfa78"},
+    {file = "warp_lang-1.6.2-py3-none-win_amd64.whl", hash = "sha256:db4d17bfdfe26d16cb7dca8e5247da1105cc39abdbc5a3a98a96387b9cdced29"},
 ]
 
 [package.dependencies]
 numpy = "*"
 
 [package.extras]
-dev = ["coverage[toml]", "nvidia-sphinx-theme", "nvtx", "pre-commit", "ruff", "sphinx-copybutton"]
-extras = ["matplotlib", "pyglet", "usd-core"]
+dev = ["coverage[toml]", "nvidia-sphinx-theme ; python_version >= \"3.9\"", "nvtx", "pre-commit", "ruff", "sphinx-copybutton"]
+extras = ["matplotlib", "pillow", "pyglet", "usd-core"]
 
 [metadata]
 lock-version = "2.1"
