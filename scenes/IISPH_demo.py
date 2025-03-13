@@ -19,7 +19,7 @@ parser.add_argument(
     help="Path to the output USD file.",
 )
 parser.add_argument(
-    "--num_frames", type=int, default=10000, help="Total number of frames."
+    "--num_frames", type=int, default=100000, help="Total number of frames."
 )
 parser.add_argument(
     "--verbose",
@@ -33,7 +33,7 @@ with wp.ScopedDevice(args.device):
     sph_demo = wsph.solver.IISPH(stage_path=args.stage_path, verbose=args.verbose)
 
     if wsph.MODE == wsph.Mode.DEBUG:
-        sph_demo.renderer.paused = True
+        sph_demo.previewer.paused = True
         for _ in range(args.num_frames):
             sph_demo.step()
             sph_demo.render()

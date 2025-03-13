@@ -640,8 +640,8 @@ class IISPH:
         self.boundary_layer = 3
 
         # set fluid
-        min_point = (BOX_WIDTH * 0.1, BOX_HEIGHT * 0.05, BOX_LENGTH * 0.1)
-        max_point = (BOX_WIDTH * 0.9, BOX_HEIGHT * 0.3, BOX_LENGTH * 0.9)
+        min_point = (BOX_WIDTH * 0.01, BOX_HEIGHT * 0.05, BOX_LENGTH * 0.01)
+        max_point = (BOX_WIDTH * 0.5, BOX_HEIGHT * 0.9, BOX_LENGTH * 0.5)
         self.x, self.n = initialize_fluid(min_point, max_point, DIAMETER)
 
         # set boundary
@@ -703,7 +703,7 @@ class IISPH:
             self.renderer = None
 
         if MODE == Mode.DEBUG:
-            reviewer = wp.render.OpenGLRenderer(
+            previewer = wp.render.OpenGLRenderer(
                 scaling=4,
                 screen_width=1200,
                 screen_height=1200,
@@ -715,20 +715,20 @@ class IISPH:
                 import pyglet
 
                 if key_handler[pyglet.window.key.E]:
-                    reviewer._camera_pos += reviewer._camera_up * (
-                        reviewer._camera_speed * reviewer._frame_speed
+                    previewer._camera_pos += previewer._camera_up * (
+                        previewer._camera_speed * previewer._frame_speed
                     )
-                    reviewer.update_view_matrix()
+                    previewer.update_view_matrix()
                 if key_handler[pyglet.window.key.Q]:
-                    reviewer._camera_pos -= reviewer._camera_up * (
-                        reviewer._camera_speed * reviewer._frame_speed
+                    previewer._camera_pos -= previewer._camera_up * (
+                        previewer._camera_speed * previewer._frame_speed
                     )
-                    reviewer.update_view_matrix()
+                    previewer.update_view_matrix()
 
-            reviewer.register_input_processor(custom_input_processor)
-            self.reviewer = reviewer
+            previewer.register_input_processor(custom_input_processor)
+            self.previewer = previewer
         else:
-            self.reviewer = None
+            self.previewer = None
 
     def step(self):  # TODO use CUDA graph capture
         with wp.ScopedTimer("step"):
@@ -959,8 +959,8 @@ class IISPH:
         renderer.end_frame()
 
     def render(self):
-        if self.reviewer:
-            self.activate_renderer(self.reviewer)
+        if self.previewer:
+            self.activate_renderer(self.previewer)
 
         if self.renderer is None:
             return
@@ -1066,6 +1066,6 @@ class IISPH:
     @property
     def window_closed(self):
         if MODE == Mode.DEBUG:
-            return self.reviewer.has_exit
+            return self.previewer.has_exit
         else:
             return False
