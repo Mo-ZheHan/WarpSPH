@@ -554,7 +554,7 @@ def update_p_rho(
     updated_rho = fluid_rho_adv[i] + term_Ap_i[i]
     eta = updated_rho / RHO_0 - 1.0
     if eta > 0.0:  # TODO remove this check
-        wp.atomic_add(sum_rho_error, 0, updated_rho / RHO_0 - 1.0)
+        wp.atomic_add(sum_rho_error, 0, eta)
         wp.atomic_add(num_rho_error, 0, 1)
 
     term_a_ii_i = term_a_ii[i]
@@ -593,6 +593,10 @@ def check_rho_update(
     ff_neighbor_num: wp.array(dtype=int),
     ff_neighbor_list: wp.array(dtype=int),
     ff_neighbor_list_index: wp.array(dtype=int),
+    fs_neighbor_num: wp.array(dtype=int),
+    fs_neighbor_list: wp.array(dtype=int),
+    fs_neighbor_list_index: wp.array(dtype=int),
+    boundary_phi: wp.array(dtype=float),
     fluid_rho: wp.array(dtype=float),
     rho_error_check_sum: wp.array(dtype=float),
     rho_error_check_num: wp.array(dtype=int),
@@ -603,7 +607,8 @@ def check_rho_update(
     i = wp.hash_grid_point_id(fluid_grid, tid)
 
     # init terms
-    term = float(0.0)
+    term_1 = float(0.0)
+    term_2 = float(0.0)
 
     x_i = particle_x[i]
     v_i = particle_v[i]
@@ -613,12 +618,19 @@ def check_rho_update(
     ):
         index = ff_neighbor_list[j]
         grad_W_ij = grad_spline_W(particle_x[index] - x_i)
-        term += wp.dot(v_i - particle_v[index], grad_W_ij)
+        term_1 += wp.dot(v_i - particle_v[index], grad_W_ij)
 
-    rho_update = fluid_rho[i] + term * FLUID_MASS * dt
-    eta = rho_update / RHO_0 - 1.0
+    for j in range(
+        fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
+    ):
+        index = fs_neighbor_list[j]
+        grad_W_ib = grad_spline_W(particle_x[index] - x_i)
+        term_2 += wp.dot(v_i, grad_W_ib) * boundary_phi[index]
+
+    updated_rho = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
+    eta = updated_rho / RHO_0 - 1.0
     if eta > 0.0:
-        wp.atomic_add(rho_error_check_sum, 0, rho_update / RHO_0 - 1.0)
+        wp.atomic_add(rho_error_check_sum, 0, eta)
         wp.atomic_add(rho_error_check_num, 0, 1)
 
 
@@ -985,6 +997,10 @@ class IISPH:
                             self.ff_neighbor_num,
                             self.ff_neighbor_list,
                             self.ff_neighbor_list_index,
+                            self.fs_neighbor_num,
+                            self.fs_neighbor_list,
+                            self.fs_neighbor_list_index,
+                            self.boundary_phi,
                             self.rho,
                         ],
                         outputs=[
