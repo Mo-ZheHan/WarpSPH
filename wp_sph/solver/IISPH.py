@@ -98,25 +98,25 @@ def compute_boundary_density(
 ):
     tid = wp.tid()
 
-    # # order threads by cell
-    # i = wp.hash_grid_point_id(boundary_grid, tid)
+    # order threads by cell
+    i = wp.hash_grid_point_id(boundary_grid, tid)
 
-    # # get local particle variables
-    # x = boundary_x[i]
+    # get local particle variables
+    x = boundary_x[i]
 
-    # # store density
-    # rho = spline_W(0.0)
+    # store density
+    rho = spline_W(0.0)
 
-    # # loop through neighbors to compute density
-    # for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):
-    #     distance = wp.length(x - boundary_x[index])
-    #     if distance < SMOOTHING_LENGTH and index != i:
-    #         rho += spline_W(distance)
+    # loop through neighbors to compute density
+    for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):
+        distance = wp.length(x - boundary_x[index])
+        if distance < SMOOTHING_LENGTH and index != i:
+            rho += spline_W(distance)
 
-    # boundary_phi[i] = RHO_0 / rho
+    boundary_phi[i] = RHO_0 / rho
 
     # TODO check this
-    boundary_phi[tid] = FLUID_MASS
+    # boundary_phi[tid] = FLUID_MASS
 
 
 @wp.kernel
@@ -244,12 +244,12 @@ def store_diff_neighbor(
 
 
 @wp.kernel
-def init_pressure(
+def init_pressure(  # TODO check this
     particle_p: wp.array(dtype=float),
 ):
     tid = wp.tid()
 
-    particle_p[tid] /= 2.0
+    particle_p[tid] = 0.0
 
 
 @wp.kernel
@@ -347,8 +347,8 @@ def predict_rho_adv(
         nabla_W_ib = grad_spline_W(boundary_x[fs_neighbor_list[j]] - x)
         term_2 += wp.dot(v_adv, nabla_W_ib) * boundary_phi[fs_neighbor_list[j]]
 
-    rho_adv = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
-    fluid_rho_adv[i] = wp.max(rho_adv, RHO_0)  # TODO check this clamp
+    fluid_rho_adv[i] = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
+    # fluid_rho_adv[i] = wp.max(rho_adv, RHO_0)  # TODO check this clamp
 
 
 @wp.kernel
@@ -554,7 +554,8 @@ def update_p(
 
     # TODO check this clamp
     particle_p[i] += (RHO_0 - fluid_rho_adv[i] - term_Ap_i[i]) * OMEGA / term_a_ii_i
-    # particle_p[i] = wp.max(particle_p[i], 0.0)
+    particle_p[i] = wp.max(particle_p[i], 0.0)
+    # particle_p[i] = wp.clamp(particle_p[i], 0.0, 1.0e5)
 
 
 @wp.kernel
@@ -562,10 +563,13 @@ def update_rho_error(
     fluid_rho_adv: wp.array(dtype=float),
     term_Ap_i: wp.array(dtype=float),
     sum_rho_error: wp.array(dtype=float),
+    num_rho_error: wp.array(dtype=int),
 ):
     tid = wp.tid()
     updated_rho = fluid_rho_adv[tid] + term_Ap_i[tid]
-    wp.atomic_add(sum_rho_error, 0, wp.abs(updated_rho / RHO_0 - 1.0))
+    if updated_rho > RHO_0:
+        wp.atomic_add(sum_rho_error, 0, wp.abs(updated_rho / RHO_0 - 1.0))
+        wp.atomic_add(num_rho_error, 0, 1)
 
 
 @wp.kernel
@@ -654,14 +658,14 @@ class IISPH:
 
         # create hash array
         self.fluid_grid = wp.HashGrid(
-            int(BOX_WIDTH / SMOOTHING_LENGTH),
-            int(BOX_HEIGHT / SMOOTHING_LENGTH),
-            int(BOX_LENGTH / SMOOTHING_LENGTH),
+            int(BOX_WIDTH / SMOOTHING_LENGTH / 4),
+            int(BOX_HEIGHT / SMOOTHING_LENGTH / 4),
+            int(BOX_LENGTH / SMOOTHING_LENGTH / 4),
         )
         self.boundary_grid = wp.HashGrid(
-            int(BOX_WIDTH / SMOOTHING_LENGTH),
-            int(BOX_HEIGHT / SMOOTHING_LENGTH),
-            int(BOX_LENGTH / SMOOTHING_LENGTH),
+            int(BOX_WIDTH / SMOOTHING_LENGTH / 4),
+            int(BOX_HEIGHT / SMOOTHING_LENGTH / 4),
+            int(BOX_LENGTH / SMOOTHING_LENGTH / 4),
         )
 
         # allocate arrays
@@ -672,6 +676,7 @@ class IISPH:
         self.a = wp.zeros(self.n, dtype=wp.vec3)
         self.p = wp.zeros(self.n, dtype=float)
         self.sum_rho_error = wp.zeros(1, dtype=float)
+        self.num_rho_error = wp.zeros(1, dtype=int)
         self.term_a_ii = wp.zeros(self.n, dtype=float)
         self.term_d_ii = wp.zeros(self.n, dtype=wp.vec3)
         self.term_d_ij = wp.zeros(self.n * 60, dtype=wp.vec3)
@@ -736,7 +741,7 @@ class IISPH:
             self.previewer = None
 
     def step(self):  # TODO use CUDA graph capture
-        with wp.ScopedTimer("step"):
+        with wp.ScopedTimer("step", print=False):
             with wp.ScopedTimer("neighbor search", active=self.verbose):
                 self.neighbor_search()
 
@@ -951,6 +956,7 @@ class IISPH:
                     )
 
                     self.sum_rho_error = wp.zeros(1, dtype=float)
+                    self.num_rho_error = wp.zeros(1, dtype=int)
                     wp.launch(
                         kernel=update_rho_error,
                         dim=self.n,
@@ -960,10 +966,13 @@ class IISPH:
                         ],
                         outputs=[
                             self.sum_rho_error,
+                            self.num_rho_error,
                         ],
                     )
 
                     loop += 1
+                if loop > 2:  # TODO remove this
+                    print(f"Pressure solver converged in {loop} iterations.")
 
             with wp.ScopedTimer("integration", active=self.verbose):
                 v_max = wp.zeros(1, dtype=float)
@@ -1024,7 +1033,7 @@ class IISPH:
         if self.renderer is None:
             return
 
-        with wp.ScopedTimer("render"):
+        with wp.ScopedTimer("render", print=False):
             self.activate_renderer(self.renderer)
 
     def neighbor_search(self):
@@ -1120,7 +1129,14 @@ class IISPH:
 
     @property
     def average_rho_error(self):
-        return self.sum_rho_error.numpy()[0] / self.n
+        num_rho_error = self.num_rho_error.numpy()[0]
+        if num_rho_error == 0:
+            return 0.0
+        average_rho_error = self.sum_rho_error.numpy()[0] / num_rho_error
+        print(  # TODO remove this print
+            f"Average density error: {average_rho_error:8f} in {num_rho_error}/{self.n} particles."
+        )
+        return average_rho_error
 
     @property
     def window_closed(self):
