@@ -328,9 +328,9 @@ def predict_v_adv(
     ):
         index = ff_neighbor_list[j]
         x_ij = particle_x[index] - x_i
-        term_1 += (
+        term_1 -= (
             grad_spline_W(x_ij)
-            * wp.dot(particle_v[index] - v_i, x_ij)
+            * wp.dot(v_i - particle_v[index], x_ij)
             / fluid_rho[index]
             / ff_neighbor_distance[j] ** 2.0
         )
@@ -340,7 +340,7 @@ def predict_v_adv(
     ):
         index = fs_neighbor_list[j]
         x_ib = boundary_x[index] - x_i
-        term_2 += (
+        term_2 -= (
             grad_spline_W(x_ib)
             * boundary_phi[index]
             * wp.dot(v_i, x_ib)
@@ -1174,30 +1174,29 @@ class IISPH:
                 )
 
                 # TODO remove this check
-                rho_wrong_max = wp.zeros(1, dtype=float)
-                wp.launch(
-                    kernel=check_rho_error,
-                    dim=self.n,
-                    inputs=[
-                        self.dt,
-                        self.fluid_grid.id,
-                        self.x,
-                        self.boundary_x,
-                        self.ff_neighbor_num,
-                        self.ff_neighbor_list,
-                        self.ff_neighbor_list_index,
-                        self.fs_neighbor_num,
-                        self.fs_neighbor_list,
-                        self.fs_neighbor_list_index,
-                        self.boundary_phi,
-                        self.rho_adv,
-                        self.rho_to_check,
-                        self.delta_v_p,
-                    ],
-                    outputs=[rho_wrong_max],
-                )
+                # rho_wrong_max = wp.zeros(1, dtype=float)
+                # wp.launch(
+                #     kernel=check_rho_error,
+                #     dim=self.n,
+                #     inputs=[
+                #         self.dt,
+                #         self.fluid_grid.id,
+                #         self.x,
+                #         self.boundary_x,
+                #         self.ff_neighbor_num,
+                #         self.ff_neighbor_list,
+                #         self.ff_neighbor_list_index,
+                #         self.fs_neighbor_num,
+                #         self.fs_neighbor_list,
+                #         self.fs_neighbor_list_index,
+                #         self.boundary_phi,
+                #         self.rho_adv,
+                #         self.rho_to_check,
+                #         self.delta_v_p,
+                #     ],
+                #     outputs=[rho_wrong_max],
+                # )
 
-                # TODO remove this check
                 # rho_wrong = rho_wrong_max.numpy()[0]
                 # if rho_wrong > 9e-5:
                 #     self.previewer.paused = True
