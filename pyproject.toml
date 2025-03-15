@@ -7,7 +7,7 @@ readme = "README.md"
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "3.12.8"
+python = "3.12.9"
 warp-lang = "^1.6"
 pyglet = "^2.1"
 usd-core = "^25.2"

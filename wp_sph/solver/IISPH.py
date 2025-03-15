@@ -16,7 +16,7 @@ import warp as wp
 import warp.render
 
 from ..main import *
-from .sph_funcs import *  # TODO cache the functions
+from .sph_funcs import *
 
 
 def initialize_fluid(min_point, max_point, spacing):
@@ -115,9 +115,6 @@ def compute_boundary_density(
 
     boundary_phi[i] = RHO_0 / rho
 
-    # TODO check this
-    # boundary_phi[tid] = FLUID_MASS
-
 
 @wp.kernel
 def count_same_neighbor(
@@ -173,10 +170,6 @@ def store_same_neighbor(
             neighbor_list[start_index + neighbor_id] = index
             neighbor_distance[start_index + neighbor_id] = distance
             neighbor_id += 1
-
-    # TODO remove this check
-    if neighbor_id != neighbor_num[i]:
-        print("ERROR: Neighbor count mismatch.")
 
 
 @wp.kernel
@@ -238,18 +231,16 @@ def store_diff_neighbor(
             neighbor_distance[start_index + neighbor_id] = distance
             neighbor_id += 1
 
-    # TODO remove this check
-    if neighbor_id != neighbor_num[i]:
-        print("ERROR: Neighbor count mismatch.")
-
 
 @wp.kernel
-def init_pressure(  # TODO check this
+def init_pressure(
     particle_p: wp.array(dtype=float),
 ):
     tid = wp.tid()
 
+    # TODO check this
     particle_p[tid] = 0.0
+    # particle_p[tid] /= 2.0
 
 
 @wp.kernel
@@ -285,11 +276,7 @@ def compute_density(
     ):
         term_2 += spline_W(fs_neighbor_distance[j]) * boundary_phi[fs_neighbor_list[j]]
 
-    # TODO check this clamp
     fluid_rho[i] = term_1 * FLUID_MASS + term_2 + spline_W(0.0) * FLUID_MASS
-    # fluid_rho[i] = wp.max(
-    #     term_1 * FLUID_MASS + term_2 + spline_W(0.0) * FLUID_MASS, RHO_0
-    # )
 
 
 @wp.kernel
@@ -401,11 +388,10 @@ def predict_rho_adv(
         term_2 += wp.dot(v_adv, grad_W_ib) * boundary_phi[index]
 
     fluid_rho_adv[i] = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
-    # fluid_rho_adv[i] = wp.max(rho_adv, RHO_0)  # TODO check this clamp
 
 
 @wp.kernel
-def compute_term_d(  # TODO check again
+def compute_term_d(
     fluid_grid: wp.uint64,
     dt: float,
     particle_x: wp.array(dtype=wp.vec3),
@@ -502,7 +488,7 @@ def compute_term_a(
 
 
 @wp.kernel
-def compute_term_Ap_1(  # TODO check again
+def compute_term_Ap_1(
     fluid_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
     particle_p: wp.array(dtype=float),
@@ -539,7 +525,7 @@ def compute_term_Ap_1(  # TODO check again
 
 
 @wp.kernel
-def compute_term_Ap_2(  # TODO check again
+def compute_term_Ap_2(
     fluid_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),
     particle_p: wp.array(dtype=float),
@@ -605,121 +591,117 @@ def update_p(
     if term_a_ii_i > -INV_SMALL and term_a_ii_i < INV_SMALL:
         term_a_ii_i = wp.sign(term_a_ii_i) * INV_SMALL
 
-    # TODO check this clamp
     particle_p[i] += (RHO_0 - fluid_rho_adv[i] - term_Ap_i[i]) * OMEGA / term_a_ii_i
     particle_p[i] = wp.max(particle_p[i], 0.0)
-    # particle_p[i] = wp.clamp(particle_p[i], 0.0, 1.0e5)
 
 
 @wp.kernel
-def update_rho_error(  # TODO remove the check
-    dt: float,
-    fluid_grid: wp.uint64,
-    particle_x: wp.array(dtype=wp.vec3),
-    particle_p: wp.array(dtype=float),
-    boundary_x: wp.array(dtype=wp.vec3),
-    ff_neighbor_num: wp.array(dtype=int),
-    ff_neighbor_list: wp.array(dtype=int),
-    ff_neighbor_list_index: wp.array(dtype=int),
-    fs_neighbor_num: wp.array(dtype=int),
-    fs_neighbor_list: wp.array(dtype=int),
-    fs_neighbor_list_index: wp.array(dtype=int),
-    boundary_phi: wp.array(dtype=float),
-    fluid_rho: wp.array(dtype=float),
+def update_rho_error(
+    # dt: float,
+    # fluid_grid: wp.uint64,
+    # particle_x: wp.array(dtype=wp.vec3),
+    # particle_p: wp.array(dtype=float),
+    # boundary_x: wp.array(dtype=wp.vec3),
+    # ff_neighbor_num: wp.array(dtype=int),
+    # ff_neighbor_list: wp.array(dtype=int),
+    # ff_neighbor_list_index: wp.array(dtype=int),
+    # fs_neighbor_num: wp.array(dtype=int),
+    # fs_neighbor_list: wp.array(dtype=int),
+    # fs_neighbor_list_index: wp.array(dtype=int),
+    # boundary_phi: wp.array(dtype=float),
+    # fluid_rho: wp.array(dtype=float),
     fluid_rho_adv: wp.array(dtype=float),
     term_Ap_i: wp.array(dtype=float),
     sum_rho_error: wp.array(dtype=float),
     num_rho_error: wp.array(dtype=int),
-    rho_to_check: wp.array(dtype=float),
-    delta_v_p: wp.array(dtype=wp.vec3),
+    # rho_to_check: wp.array(dtype=float),
+    # delta_v_p: wp.array(dtype=wp.vec3),
 ):
     tid = wp.tid()
     updated_rho = fluid_rho_adv[tid] + term_Ap_i[tid]
-    if updated_rho > RHO_0:
+    if updated_rho > RHO_0:  # TODO check this
         wp.atomic_add(sum_rho_error, 0, wp.abs(updated_rho / RHO_0 - 1.0))
         wp.atomic_add(num_rho_error, 0, 1)
 
-    rho_to_check[tid] = updated_rho
+    # # order threads by cell
+    # i = wp.hash_grid_point_id(fluid_grid, tid)
 
-    # TODO remove this check
-    # order threads by cell
-    i = wp.hash_grid_point_id(fluid_grid, tid)
+    # # init terms
+    # term_1 = wp.vec3(0.0, 0.0, 0.0)
+    # term_2 = wp.vec3(0.0, 0.0, 0.0)
 
-    # init terms
-    term_1 = wp.vec3(0.0, 0.0, 0.0)
-    term_2 = wp.vec3(0.0, 0.0, 0.0)
+    # x_i = particle_x[i]
+    # p_inv_rho2_i = particle_p[i] / fluid_rho[i] ** 2.0
 
-    x_i = particle_x[i]
-    p_inv_rho2_i = particle_p[i] / fluid_rho[i] ** 2.0
+    # # loop through neighbors to compute density
+    # for j in range(
+    #     ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
+    # ):
+    #     index = ff_neighbor_list[j]
+    #     grad_W_ij = grad_spline_W(particle_x[index] - x_i)
+    #     term_1 -= (
+    #         p_inv_rho2_i + particle_p[index] / fluid_rho[index] ** 2.0
+    #     ) * grad_W_ij
 
-    # loop through neighbors to compute density
-    for j in range(
-        ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
-    ):
-        index = ff_neighbor_list[j]
-        grad_W_ij = grad_spline_W(particle_x[index] - x_i)
-        term_1 -= (
-            p_inv_rho2_i + particle_p[index] / fluid_rho[index] ** 2.0
-        ) * grad_W_ij
+    # for j in range(
+    #     fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
+    # ):
+    #     index = fs_neighbor_list[j]
+    #     grad_W_ib = grad_spline_W(boundary_x[index] - x_i)
+    #     term_2 -= p_inv_rho2_i * grad_W_ib * boundary_phi[index]
 
-    for j in range(
-        fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
-    ):
-        index = fs_neighbor_list[j]
-        grad_W_ib = grad_spline_W(boundary_x[index] - x_i)
-        term_2 -= p_inv_rho2_i * grad_W_ib * boundary_phi[index]
-
-    delta_v_p[i] = (term_1 * FLUID_MASS + term_2) * dt
+    # delta_v_p[i] = (term_1 * FLUID_MASS + term_2) * dt
+    # rho_to_check[tid] = updated_rho
 
 
-@wp.kernel
-def check_rho_error(  # TODO remove this check
-    dt: float,
-    fluid_grid: wp.uint64,
-    particle_x: wp.array(dtype=wp.vec3),
-    boundary_x: wp.array(dtype=wp.vec3),
-    ff_neighbor_num: wp.array(dtype=int),
-    ff_neighbor_list: wp.array(dtype=int),
-    ff_neighbor_list_index: wp.array(dtype=int),
-    fs_neighbor_num: wp.array(dtype=int),
-    fs_neighbor_list: wp.array(dtype=int),
-    fs_neighbor_list_index: wp.array(dtype=int),
-    boundary_phi: wp.array(dtype=float),
-    fluid_rho_adv: wp.array(dtype=float),
-    rho_to_check: wp.array(dtype=float),
-    delta_v_p: wp.array(dtype=wp.vec3),
-    rho_wrong_max: wp.array(dtype=float),
-):
-    tid = wp.tid()
+# @wp.kernel
+# def check_rho_error(
+#     dt: float,
+#     fluid_grid: wp.uint64,
+#     particle_x: wp.array(dtype=wp.vec3),
+#     boundary_x: wp.array(dtype=wp.vec3),
+#     ff_neighbor_num: wp.array(dtype=int),
+#     ff_neighbor_list: wp.array(dtype=int),
+#     ff_neighbor_list_index: wp.array(dtype=int),
+#     fs_neighbor_num: wp.array(dtype=int),
+#     fs_neighbor_list: wp.array(dtype=int),
+#     fs_neighbor_list_index: wp.array(dtype=int),
+#     boundary_phi: wp.array(dtype=float),
+#     fluid_rho_adv: wp.array(dtype=float),
+#     rho_to_check: wp.array(dtype=float),
+#     delta_v_p: wp.array(dtype=wp.vec3),
+#     rho_wrong_max: wp.array(dtype=float),
+# ):
+#     tid = wp.tid()
 
-    # order threads by cell
-    i = wp.hash_grid_point_id(fluid_grid, tid)
+#     # order threads by cell
+#     i = wp.hash_grid_point_id(fluid_grid, tid)
 
-    # init terms
-    term_1 = float(0.0)
-    term_2 = float(0.0)
+#     # init terms
+#     term_1 = float(0.0)
+#     term_2 = float(0.0)
 
-    x_i = particle_x[i]
-    v_i = delta_v_p[i]
+#     x_i = particle_x[i]
+#     v_i = delta_v_p[i]
 
-    # loop through neighbors to compute density
-    for j in range(
-        ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
-    ):
-        index = ff_neighbor_list[j]
-        grad_W_ij = grad_spline_W(particle_x[index] - x_i)
-        term_1 += wp.dot(v_i - delta_v_p[index], grad_W_ij)
+#     # loop through neighbors to compute density
+#     for j in range(
+#         ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
+#     ):
+#         index = ff_neighbor_list[j]
+#         grad_W_ij = grad_spline_W(particle_x[index] - x_i)
+#         term_1 += wp.dot(v_i - delta_v_p[index], grad_W_ij)
 
-    for j in range(
-        fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
-    ):
-        index = fs_neighbor_list[j]
-        grad_W_ib = grad_spline_W(boundary_x[index] - x_i)
-        term_2 += wp.dot(v_i, grad_W_ib) * boundary_phi[index]
+#     for j in range(
+#         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
+#     ):
+#         index = fs_neighbor_list[j]
+#         grad_W_ib = grad_spline_W(boundary_x[index] - x_i)
+#         term_2 += wp.dot(v_i, grad_W_ib) * boundary_phi[index]
 
-    rho_check = fluid_rho_adv[i] + (term_1 * FLUID_MASS + term_2) * dt
-    rho_wrong = wp.abs(rho_check - rho_to_check[i])
-    wp.atomic_max(rho_wrong_max, 0, rho_wrong)
+#     rho_check = fluid_rho_adv[i] + (term_1 * FLUID_MASS + term_2) * dt
+#     rho_wrong = wp.abs(rho_check - rho_to_check[i])
+#     wp.atomic_max(rho_wrong_max, 0, rho_wrong)
 
 
 @wp.kernel
@@ -744,12 +726,12 @@ def drift(
     dt: float,
     particle_v: wp.array(dtype=wp.vec3),
     particle_x: wp.array(dtype=wp.vec3),
-    penetration_times: wp.array(dtype=int),
+    # penetration_times: wp.array(dtype=int),
 ):
     tid = wp.tid()
-    new_pos = particle_x[tid] + particle_v[tid] * dt
+    particle_x[tid] += particle_v[tid] * dt
+    # new_pos = particle_x[tid] + particle_v[tid] * dt
 
-    # TODO remove this check
     # penetration_detected = False
 
     # if new_pos[0] < -3.0 * DIAMETER:
@@ -779,7 +761,7 @@ def drift(
     #     particle_v[tid] = wp.vec3(particle_v[tid][0], particle_v[tid][1], 0.0)
     #     penetration_detected = True
 
-    particle_x[tid] = new_pos
+    # particle_x[tid] = new_pos
     # if penetration_detected:
     #     wp.atomic_add(penetration_times, 0, 1)
 
@@ -842,9 +824,9 @@ class IISPH:
         self.fs_neighbor_distance = wp.zeros(self.n * 60, dtype=float)
         self.fs_neighbor_list_index = wp.zeros(self.n, dtype=int)
         self.boundary_phi = wp.zeros(self.boundary_n, dtype=float)
-        self.penetration_times = wp.zeros(1, dtype=int)  # TODO remove this
-        self.delta_v_p = wp.zeros(self.n, dtype=wp.vec3)  # TODO remove this
-        self.rho_to_check = wp.zeros(self.n, dtype=float)  # TODO remove this
+        # self.penetration_times = wp.zeros(1, dtype=int)
+        # self.delta_v_p = wp.zeros(self.n, dtype=wp.vec3)
+        # self.rho_to_check = wp.zeros(self.n, dtype=float)
 
         # compute PHI value of boundary particles
         self.boundary_grid.build(self.boundary_x, SMOOTHING_LENGTH)
@@ -893,7 +875,7 @@ class IISPH:
             self.previewer = None
 
     def step(self):  # TODO use CUDA graph capture
-        with wp.ScopedTimer("step", print=False):
+        with wp.ScopedTimer("step", active=self.verbose):
             with wp.ScopedTimer("neighbor search", active=self.verbose):
                 self.neighbor_search()
 
@@ -1126,33 +1108,31 @@ class IISPH:
                         kernel=update_rho_error,
                         dim=self.n,
                         inputs=[
-                            self.dt,
-                            self.fluid_grid.id,
-                            self.x,
-                            self.p,
-                            self.boundary_x,
-                            self.ff_neighbor_num,
-                            self.ff_neighbor_list,
-                            self.ff_neighbor_list_index,
-                            self.fs_neighbor_num,
-                            self.fs_neighbor_list,
-                            self.fs_neighbor_list_index,
-                            self.boundary_phi,
-                            self.rho,
+                            # self.dt,
+                            # self.fluid_grid.id,
+                            # self.x,
+                            # self.p,
+                            # self.boundary_x,
+                            # self.ff_neighbor_num,
+                            # self.ff_neighbor_list,
+                            # self.ff_neighbor_list_index,
+                            # self.fs_neighbor_num,
+                            # self.fs_neighbor_list,
+                            # self.fs_neighbor_list_index,
+                            # self.boundary_phi,
+                            # self.rho,
                             self.rho_adv,
                             self.term_Ap_i,
                         ],
                         outputs=[
                             self.sum_rho_error,
                             self.num_rho_error,
-                            self.rho_to_check,
-                            self.delta_v_p,
+                            # self.rho_to_check,
+                            # self.delta_v_p,
                         ],
                     )
 
                     loop += 1
-                if loop > 2:  # TODO remove this
-                    print(f"Pressure solver converged in {loop} iterations.")
 
             with wp.ScopedTimer("integration", active=self.verbose):
                 v_max = wp.zeros(1, dtype=float)
@@ -1173,7 +1153,6 @@ class IISPH:
                     ],
                 )
 
-                # TODO remove this check
                 # rho_wrong_max = wp.zeros(1, dtype=float)
                 # wp.launch(
                 #     kernel=check_rho_error,
@@ -1209,7 +1188,7 @@ class IISPH:
                     inputs=[self.dt, self.v],
                     outputs=[
                         self.x,
-                        self.penetration_times,
+                        # self.penetration_times,
                     ],
                 )
 
@@ -1223,7 +1202,7 @@ class IISPH:
         renderer.begin_frame(self.sim_time)
         renderer.render_points(
             points=self.x.numpy(),
-            radius=DIAMETER / 2.0,
+            radius=wp.constant(DIAMETER / 2.0),
             name="fluid",
             colors=(0.5, 0.5, 0.8),
         )
@@ -1242,7 +1221,7 @@ class IISPH:
         if self.renderer is None:
             return
 
-        with wp.ScopedTimer("render", print=False):
+        with wp.ScopedTimer("render", active=self.verbose):
             self.activate_renderer(self.renderer)
 
     def neighbor_search(self):
@@ -1269,11 +1248,6 @@ class IISPH:
                 self.ff_neighbor_list_index,
             ],
         )
-
-        # TODO remove this print
-        # print(
-        #     f"Completed search for fluid neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.ff_neighbor_list.shape[0]}."
-        # )
 
         wp.launch(
             kernel=store_same_neighbor,
@@ -1309,11 +1283,6 @@ class IISPH:
             ],
         )
 
-        # TODO remove this print
-        # print(
-        #     f"Completed search for boundary neighbors of fluid. Cached {neighbor_pointer.numpy()[0]} neighbors in array of size {self.fs_neighbor_list.shape[0]}."
-        # )
-
         wp.launch(
             kernel=store_diff_neighbor,
             dim=self.n,
@@ -1341,11 +1310,7 @@ class IISPH:
         num_rho_error = self.num_rho_error.numpy()[0]
         if num_rho_error == 0:
             return 0.0
-        average_rho_error = self.sum_rho_error.numpy()[0] / num_rho_error
-        print(  # TODO remove this print
-            f"Average density error: {average_rho_error:8f} in {num_rho_error}/{self.n} particles."
-        )
-        return average_rho_error
+        return self.sum_rho_error.numpy()[0] / num_rho_error
 
     @property
     def window_closed(self):
