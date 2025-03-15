@@ -559,12 +559,26 @@ def update_p(
 
 
 @wp.kernel
-def update_rho_error(
+def update_rho_error(  # TODO remove the check
+    dt: float,
+    fluid_grid: wp.uint64,
+    particle_x: wp.array(dtype=wp.vec3),
+    particle_p: wp.array(dtype=float),
+    boundary_x: wp.array(dtype=wp.vec3),
+    ff_neighbor_num: wp.array(dtype=int),
+    ff_neighbor_list: wp.array(dtype=int),
+    ff_neighbor_list_index: wp.array(dtype=int),
+    fs_neighbor_num: wp.array(dtype=int),
+    fs_neighbor_list: wp.array(dtype=int),
+    fs_neighbor_list_index: wp.array(dtype=int),
+    boundary_phi: wp.array(dtype=float),
+    fluid_rho: wp.array(dtype=float),
     fluid_rho_adv: wp.array(dtype=float),
     term_Ap_i: wp.array(dtype=float),
     sum_rho_error: wp.array(dtype=float),
     num_rho_error: wp.array(dtype=int),
     rho_to_check: wp.array(dtype=float),
+    delta_v_p: wp.array(dtype=wp.vec3),
 ):
     tid = wp.tid()
     updated_rho = fluid_rho_adv[tid] + term_Ap_i[tid]
@@ -573,6 +587,36 @@ def update_rho_error(
         wp.atomic_add(num_rho_error, 0, 1)
 
     rho_to_check[tid] = updated_rho
+
+    # TODO remove this check
+    # order threads by cell
+    i = wp.hash_grid_point_id(fluid_grid, tid)
+
+    # init terms
+    term_1 = wp.vec3(0.0, 0.0, 0.0)
+    term_2 = wp.vec3(0.0, 0.0, 0.0)
+
+    x_i = particle_x[i]
+    p_inv_rho2_i = particle_p[i] / fluid_rho[i] ** 2.0
+
+    # loop through neighbors to compute density
+    for j in range(
+        ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
+    ):
+        index = ff_neighbor_list[j]
+        grad_W_ij = grad_spline_W(particle_x[index] - x_i)
+        term_1 -= (
+            p_inv_rho2_i + particle_p[index] / fluid_rho[index] ** 2.0
+        ) * grad_W_ij
+
+    for j in range(
+        fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
+    ):
+        index = fs_neighbor_list[j]
+        grad_W_ib = grad_spline_W(boundary_x[index] - x_i)
+        term_2 -= p_inv_rho2_i * grad_W_ib * boundary_phi[index]
+
+    delta_v_p[i] = (term_1 * FLUID_MASS + term_2) * dt
 
 
 @wp.kernel
@@ -611,7 +655,7 @@ def check_rho_error(  # TODO remove this check
     ):
         index = ff_neighbor_list[j]
         grad_W_ij = grad_spline_W(particle_x[index] - x_i)
-        term_1 += wp.dot(v_i - delta_v_p[i], grad_W_ij)
+        term_1 += wp.dot(v_i - delta_v_p[index], grad_W_ij)
 
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
@@ -621,10 +665,8 @@ def check_rho_error(  # TODO remove this check
         term_2 += wp.dot(v_i, grad_W_ib) * boundary_phi[index]
 
     rho_check = fluid_rho_adv[i] + (term_1 * FLUID_MASS + term_2) * dt
-    rho_base = rho_to_check[i]
-    if rho_base > 0.9 * RHO_0:
-        rho_wrong = wp.abs(rho_check - rho_base)
-        wp.atomic_max(rho_wrong_max, 0, rho_wrong)
+    rho_wrong = wp.abs(rho_check - rho_to_check[i])
+    wp.atomic_max(rho_wrong_max, 0, rho_wrong)
 
 
 @wp.kernel
@@ -636,14 +678,12 @@ def kick(
     sum_d_ij_p_j: wp.array(dtype=wp.vec3),
     particle_v: wp.array(dtype=wp.vec3),
     particle_v_max: wp.array(dtype=float),
-    delta_v_p: wp.array(dtype=wp.vec3),
 ):
     tid = wp.tid()
     delta_v = inv_dt * (term_d_ii[tid] * particle_p[tid] + sum_d_ij_p_j[tid])
     v = particle_v_adv[tid] + delta_v
     particle_v[tid] = v
     wp.atomic_max(particle_v_max, 0, wp.length(v))
-    delta_v_p[tid] = delta_v
 
 
 @wp.kernel
@@ -1020,6 +1060,19 @@ class IISPH:
                         kernel=update_rho_error,
                         dim=self.n,
                         inputs=[
+                            self.dt,
+                            self.fluid_grid.id,
+                            self.x,
+                            self.p,
+                            self.boundary_x,
+                            self.ff_neighbor_num,
+                            self.ff_neighbor_list,
+                            self.ff_neighbor_list_index,
+                            self.fs_neighbor_num,
+                            self.fs_neighbor_list,
+                            self.fs_neighbor_list_index,
+                            self.boundary_phi,
+                            self.rho,
                             self.rho_adv,
                             self.term_Ap_i,
                         ],
@@ -1027,6 +1080,7 @@ class IISPH:
                             self.sum_rho_error,
                             self.num_rho_error,
                             self.rho_to_check,
+                            self.delta_v_p,
                         ],
                     )
 
@@ -1050,7 +1104,6 @@ class IISPH:
                     outputs=[
                         self.v,
                         v_max,
-                        self.delta_v_p,
                     ],
                 )
 
@@ -1078,9 +1131,9 @@ class IISPH:
                     outputs=[rho_wrong_max],
                 )
                 rho_wrong = rho_wrong_max.numpy()[0]
-                if rho_wrong > 0.5 * RHO_0 * ETA:
-                    print(f"最大密度偏差：{rho_wrong:.3f}")
+                if rho_wrong > 1e-5:
                     self.previewer.paused = True
+                    print(f"Rho wrong: {rho_wrong:.6f}")
 
                 # drift
                 wp.launch(
