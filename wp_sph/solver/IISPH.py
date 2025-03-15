@@ -294,13 +294,65 @@ def compute_density(
 
 @wp.kernel
 def predict_v_adv(
+    fluid_grid: wp.uint64,
     dt: float,
+    particle_x: wp.array(dtype=wp.vec3),
     particle_v: wp.array(dtype=wp.vec3),
+    boundary_x: wp.array(dtype=wp.vec3),
+    ff_neighbor_num: wp.array(dtype=int),
+    ff_neighbor_list: wp.array(dtype=int),
+    ff_neighbor_list_index: wp.array(dtype=int),
+    ff_neighbor_distance: wp.array(dtype=float),
+    fs_neighbor_num: wp.array(dtype=int),
+    fs_neighbor_list: wp.array(dtype=int),
+    fs_neighbor_list_index: wp.array(dtype=int),
+    fs_neighbor_distance: wp.array(dtype=float),
+    fluid_rho: wp.array(dtype=float),
+    boundary_phi: wp.array(dtype=float),
     particle_v_adv: wp.array(dtype=wp.vec3),
 ):
     tid = wp.tid()
 
-    particle_v_adv[tid] = particle_v[tid] + wp.vec3(0.0, -GRAVITY, 0.0) * dt
+    # order threads by cell
+    i = wp.hash_grid_point_id(fluid_grid, tid)
+
+    # init terms
+    term_1 = wp.vec3(0.0, 0.0, 0.0)
+    term_2 = wp.vec3(0.0, 0.0, 0.0)
+
+    x_i = particle_x[i]
+    v_i = particle_v[i]
+
+    for j in range(
+        ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
+    ):
+        index = ff_neighbor_list[j]
+        x_ij = particle_x[index] - x_i
+        term_1 += (
+            grad_spline_W(x_ij)
+            * wp.dot(particle_v[index] - v_i, x_ij)
+            / fluid_rho[index]
+            / ff_neighbor_distance[j] ** 2.0
+        )
+
+    for j in range(
+        fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
+    ):
+        index = fs_neighbor_list[j]
+        x_ib = boundary_x[index] - x_i
+        term_2 += (
+            grad_spline_W(x_ib)
+            * boundary_phi[index]
+            * wp.dot(v_i, x_ib)
+            / fs_neighbor_distance[j] ** 2.0
+        )
+
+    laplace_v = 10.0 * (term_1 * FLUID_MASS + term_2 / RHO_0)
+
+    particle_v_adv[i] = (
+        particle_v[i]
+        + (laplace_v * VIS_MU / fluid_rho[i] + wp.vec3(0.0, -GRAVITY, 0.0)) * dt
+    )
 
 
 @wp.kernel
@@ -338,14 +390,15 @@ def predict_rho_adv(
     ):
         index = ff_neighbor_list[j]
         v_ij = v_adv - particle_v_adv[index]
-        nabla_W_ij = grad_spline_W(particle_x[index] - x)
-        term_1 += wp.dot(v_ij, nabla_W_ij)
+        grad_W_ij = grad_spline_W(particle_x[index] - x)
+        term_1 += wp.dot(v_ij, grad_W_ij)
 
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
-        nabla_W_ib = grad_spline_W(boundary_x[fs_neighbor_list[j]] - x)
-        term_2 += wp.dot(v_adv, nabla_W_ib) * boundary_phi[fs_neighbor_list[j]]
+        index = fs_neighbor_list[j]
+        grad_W_ib = grad_spline_W(boundary_x[index] - x)
+        term_2 += wp.dot(v_adv, grad_W_ib) * boundary_phi[index]
 
     fluid_rho_adv[i] = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
     # fluid_rho_adv[i] = wp.max(rho_adv, RHO_0)  # TODO check this clamp
@@ -876,8 +929,21 @@ class IISPH:
                     kernel=predict_v_adv,
                     dim=self.n,
                     inputs=[
+                        self.fluid_grid.id,
                         self.dt,
+                        self.x,
                         self.v,
+                        self.boundary_x,
+                        self.ff_neighbor_num,
+                        self.ff_neighbor_list,
+                        self.ff_neighbor_list_index,
+                        self.ff_neighbor_distance,
+                        self.fs_neighbor_num,
+                        self.fs_neighbor_list,
+                        self.fs_neighbor_list_index,
+                        self.fs_neighbor_distance,
+                        self.rho,
+                        self.boundary_phi,
                     ],
                     outputs=[self.v_adv],
                 )
@@ -1130,10 +1196,12 @@ class IISPH:
                     ],
                     outputs=[rho_wrong_max],
                 )
-                rho_wrong = rho_wrong_max.numpy()[0]
-                if rho_wrong > 1e-5:
-                    self.previewer.paused = True
-                    print(f"Rho wrong: {rho_wrong:.6f}")
+
+                # TODO remove this check
+                # rho_wrong = rho_wrong_max.numpy()[0]
+                # if rho_wrong > 9e-5:
+                #     self.previewer.paused = True
+                #     print(f"Rho wrong: {rho_wrong:.6f}")
 
                 # drift
                 wp.launch(

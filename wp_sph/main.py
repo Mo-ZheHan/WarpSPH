@@ -11,7 +11,7 @@ class Mode(Enum):
 ###########################################################################
 # Global variable settings
 
-MODE = Mode.DEBUG
+MODE = Mode.DEFAULT
 GRAVITY = 9.8
 DIAMETER = 0.05
 OMEGA = 0.5
@@ -31,3 +31,4 @@ TIME_STEP_MAX = wp.constant(5e-3 * DIAMETER)
 FLUID_MASS = wp.constant(RHO_0 * DIAMETER**3)
 SIGMA = wp.constant(8 / (wp.pi * SMOOTHING_LENGTH**3))
 SIG_INV_H = wp.constant(SIGMA / SMOOTHING_LENGTH)
+VIS_MU = wp.constant(1.0e-3 * RHO_0)

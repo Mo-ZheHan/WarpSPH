@@ -1,4 +1,6 @@
 *.usd
+*.log
 *.DS_Store
 
+.direnv/
 __pycache__/
