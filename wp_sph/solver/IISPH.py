@@ -96,7 +96,7 @@ def compute_boundary_density(
     boundary_x: wp.array(dtype=wp.vec3),
     boundary_phi: wp.array(dtype=float),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
 
     # order threads by cell
     i = wp.hash_grid_point_id(boundary_grid, tid)
@@ -108,7 +108,7 @@ def compute_boundary_density(
     rho = spline_W(0.0)
 
     # loop through neighbors to compute density
-    for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):
+    for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):  # type: ignore
         distance = wp.length(x - boundary_x[index])
         if distance < SMOOTHING_LENGTH and index != i:
             rho += spline_W(distance)
@@ -124,7 +124,7 @@ def count_same_neighbor(
     neighbor_num: wp.array(dtype=int),
     neighbor_list_index: wp.array(dtype=int),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
     neighbor_id = wp.int32(0)
 
     # order threads by cell
@@ -134,7 +134,7 @@ def count_same_neighbor(
     x = particle_x[i]
 
     # count neighbors
-    for index in wp.hash_grid_query(grid, x, SMOOTHING_LENGTH):
+    for index in wp.hash_grid_query(grid, x, SMOOTHING_LENGTH):  # type: ignore
         distance = wp.length(x - particle_x[index])
         if distance < SMOOTHING_LENGTH and index != i:
             neighbor_id += 1
@@ -153,7 +153,7 @@ def store_same_neighbor(
     neighbor_list: wp.array(dtype=int),
     neighbor_distance: wp.array(dtype=float),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
     neighbor_id = wp.int32(0)
 
     # order threads by cell
@@ -164,7 +164,7 @@ def store_same_neighbor(
     x = particle_x[i]
 
     # store neighbors
-    for index in wp.hash_grid_query(grid, x, SMOOTHING_LENGTH):
+    for index in wp.hash_grid_query(grid, x, SMOOTHING_LENGTH):  # type: ignore
         distance = wp.length(x - particle_x[index])
         if distance < SMOOTHING_LENGTH and index != i:
             neighbor_list[start_index + neighbor_id] = index
@@ -182,7 +182,7 @@ def count_diff_neighbor(
     neighbor_num: wp.array(dtype=int),
     neighbor_list_index: wp.array(dtype=int),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
     neighbor_id = wp.int32(0)
 
     # order threads by cell
@@ -192,7 +192,7 @@ def count_diff_neighbor(
     x = particle_x[i]
 
     # count neighbors
-    for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):
+    for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):  # type: ignore
         distance = wp.length(x - neighbor_x[index])
         if distance < SMOOTHING_LENGTH:
             neighbor_id += 1
@@ -213,7 +213,7 @@ def store_diff_neighbor(
     neighbor_list: wp.array(dtype=int),
     neighbor_distance: wp.array(dtype=float),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
     neighbor_id = wp.int32(0)
 
     # order threads by cell
@@ -224,7 +224,7 @@ def store_diff_neighbor(
     x = particle_x[i]
 
     # store neighbors
-    for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):
+    for index in wp.hash_grid_query(neighbor_grid, x, SMOOTHING_LENGTH):  # type: ignore
         distance = wp.length(x - neighbor_x[index])
         if distance < SMOOTHING_LENGTH:
             neighbor_list[start_index + neighbor_id] = index
@@ -256,7 +256,7 @@ def compute_density(
     boundary_phi: wp.array(dtype=float),
     fluid_rho: wp.array(dtype=float),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
 
     # order threads by cell
     i = wp.hash_grid_point_id(fluid_grid, tid)
@@ -298,7 +298,7 @@ def predict_v_adv(
     boundary_phi: wp.array(dtype=float),
     particle_v_adv: wp.array(dtype=wp.vec3),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
 
     # order threads by cell
     i = wp.hash_grid_point_id(fluid_grid, tid)
@@ -359,7 +359,7 @@ def predict_rho_adv(
     fluid_rho: wp.array(dtype=float),
     fluid_rho_adv: wp.array(dtype=float),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
 
     # order threads by cell
     i = wp.hash_grid_point_id(fluid_grid, tid)
@@ -408,7 +408,7 @@ def compute_term_d(
     term_d_ij: wp.array(dtype=wp.vec3),
     term_d_ji: wp.array(dtype=wp.vec3),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
 
     # order threads by cell
     i = wp.hash_grid_point_id(fluid_grid, tid)
@@ -458,7 +458,7 @@ def compute_term_a(
     term_d_ji: wp.array(dtype=wp.vec3),
     term_a_ii: wp.array(dtype=float),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
 
     # order threads by cell
     i = wp.hash_grid_point_id(fluid_grid, tid)
@@ -501,7 +501,7 @@ def compute_term_Ap_1(
     sum_d_ij_p_j: wp.array(dtype=wp.vec3),
     term_Ap_i: wp.array(dtype=float),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
 
     # order threads by cell
     i = wp.hash_grid_point_id(fluid_grid, tid)
@@ -541,7 +541,7 @@ def compute_term_Ap_2(
     sum_d_ij_p_j: wp.array(dtype=wp.vec3),
     term_Ap_i: wp.array(dtype=float),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
 
     # order threads by cell
     i = wp.hash_grid_point_id(fluid_grid, tid)
@@ -582,7 +582,7 @@ def update_p(
     term_Ap_i: wp.array(dtype=float),
     particle_p: wp.array(dtype=float),
 ):
-    tid = wp.tid()
+    tid = wp.int32(wp.tid())
 
     # order threads by cell
     i = wp.hash_grid_point_id(fluid_grid, tid)
@@ -672,7 +672,7 @@ def update_rho_error(
 #     delta_v_p: wp.array(dtype=wp.vec3),
 #     rho_wrong_max: wp.array(dtype=float),
 # ):
-#     tid = wp.tid()
+#     tid = wp.int32(wp.tid())
 
 #     # order threads by cell
 #     i = wp.hash_grid_point_id(fluid_grid, tid)
@@ -767,7 +767,8 @@ def drift(
 
 
 class IISPH:
-    def __init__(self, stage_path="example_sph.usd", verbose=False):
+
+    def __init__(self, stage_path="example_sph.usd", preview=False, verbose=False):
         self.verbose = verbose
 
         # render params
@@ -842,12 +843,12 @@ class IISPH:
 
         # renderer
         if stage_path:
-            self.renderer = wp.render.UsdRenderer(stage_path)
+            self.renderer = warp.render.UsdRenderer(stage_path)
         else:
             self.renderer = None
 
-        if MODE == Mode.DEBUG:
-            previewer = wp.render.OpenGLRenderer(
+        if preview:
+            previewer = warp.render.OpenGLRenderer(
                 scaling=4,
                 screen_width=1200,
                 screen_height=1200,
@@ -1314,7 +1315,7 @@ class IISPH:
 
     @property
     def window_closed(self):
-        if MODE == Mode.DEBUG:
+        if self.previewer:
             return self.previewer.has_exit
         else:
             return False

@@ -26,7 +26,7 @@ def spline_W(r: float):
     return tmp
 
 
-@wp.func  # TODO: polish this
+@wp.func
 def grad_spline_W(r: wp.vec3):
     q = wp.length(r) / h
     tmp = 0.0
@@ -34,4 +34,4 @@ def grad_spline_W(r: wp.vec3):
         tmp = 6.0 * (1.0 - q) ** 2.0
     elif q <= 0.5:
         tmp = -6.0 * (3.0 * q**2.0 - 2.0 * q)
-    return tmp * sig_inv_h * wp.normalize(r)
+    return tmp * sig_inv_h * wp.normalize(r)  # type: ignore

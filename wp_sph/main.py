@@ -1,17 +1,7 @@
-from enum import Enum, auto
-
 import warp as wp
-
-
-class Mode(Enum):
-    DEFAULT = auto()
-    DEBUG = auto()
-
 
 ###########################################################################
 # Global variable settings
-
-MODE = Mode.DEFAULT
 GRAVITY = 9.8
 DIAMETER = 0.05
 OMEGA = 0.5

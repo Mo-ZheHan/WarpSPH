@@ -22,6 +22,11 @@ parser.add_argument(
     "--num_frames", type=int, default=100000, help="Total number of frames."
 )
 parser.add_argument(
+    "--preview",
+    action="store_true",
+    help="Enable the preview window.",
+)
+parser.add_argument(
     "--verbose",
     action="store_true",
     help="Print out additional status messages during execution.",
@@ -30,18 +35,17 @@ parser.add_argument(
 args = parser.parse_known_args()[0]
 
 with wp.ScopedDevice(args.device):
-    sph_demo = wsph.solver.IISPH(stage_path=args.stage_path, verbose=args.verbose)
+    sph_demo = wsph.solver.IISPH(
+        stage_path=args.stage_path, preview=args.preview, verbose=args.verbose
+    )
 
-    if wsph.MODE == wsph.Mode.DEBUG:
+    if sph_demo.previewer:
         sph_demo.previewer.paused = True
         for _ in range(args.num_frames):
             sph_demo.step()
             sph_demo.render()
             if sph_demo.window_closed:
                 break
-        # print( # TODO: remove this
-        #     f"Done. {sph_demo.penetration_times} potential particle penetrations detected."
-        # )
     else:
         for _ in range(args.num_frames):
             sph_demo.step()
