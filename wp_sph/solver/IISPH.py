@@ -93,8 +93,8 @@ def initialize_box(layers, spacing):
 @wp.kernel
 def compute_boundary_density(
     boundary_grid: wp.uint64,
-    boundary_x: wp.array(dtype=wp.vec3),
-    boundary_phi: wp.array(dtype=float),
+    boundary_x: wp.array(dtype=wp.vec3),  # type: ignore
+    boundary_phi: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
 
@@ -119,10 +119,10 @@ def compute_boundary_density(
 @wp.kernel
 def count_same_neighbor(
     grid: wp.uint64,
-    particle_x: wp.array(dtype=wp.vec3),
-    neighbor_pointer: wp.array(dtype=int),
-    neighbor_num: wp.array(dtype=int),
-    neighbor_list_index: wp.array(dtype=int),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    neighbor_pointer: wp.array(dtype=int),  # type: ignore
+    neighbor_num: wp.array(dtype=int),  # type: ignore
+    neighbor_list_index: wp.array(dtype=int),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
     neighbor_id = wp.int32(0)
@@ -147,11 +147,10 @@ def count_same_neighbor(
 @wp.kernel
 def store_same_neighbor(
     grid: wp.uint64,
-    particle_x: wp.array(dtype=wp.vec3),
-    neighbor_num: wp.array(dtype=int),
-    neighbor_list_index: wp.array(dtype=int),
-    neighbor_list: wp.array(dtype=int),
-    neighbor_distance: wp.array(dtype=float),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    neighbor_list: wp.array(dtype=int),  # type: ignore
+    neighbor_distance: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
     neighbor_id = wp.int32(0)
@@ -176,11 +175,11 @@ def store_same_neighbor(
 def count_diff_neighbor(
     grid: wp.uint64,
     neighbor_grid: wp.uint64,
-    particle_x: wp.array(dtype=wp.vec3),
-    neighbor_x: wp.array(dtype=wp.vec3),
-    neighbor_pointer: wp.array(dtype=int),
-    neighbor_num: wp.array(dtype=int),
-    neighbor_list_index: wp.array(dtype=int),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    neighbor_x: wp.array(dtype=wp.vec3),  # type: ignore
+    neighbor_pointer: wp.array(dtype=int),  # type: ignore
+    neighbor_num: wp.array(dtype=int),  # type: ignore
+    neighbor_list_index: wp.array(dtype=int),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
     neighbor_id = wp.int32(0)
@@ -206,12 +205,11 @@ def count_diff_neighbor(
 def store_diff_neighbor(
     grid: wp.uint64,
     neighbor_grid: wp.uint64,
-    particle_x: wp.array(dtype=wp.vec3),
-    neighbor_x: wp.array(dtype=wp.vec3),
-    neighbor_num: wp.array(dtype=int),
-    neighbor_list_index: wp.array(dtype=int),
-    neighbor_list: wp.array(dtype=int),
-    neighbor_distance: wp.array(dtype=float),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    neighbor_x: wp.array(dtype=wp.vec3),  # type: ignore
+    neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    neighbor_list: wp.array(dtype=int),  # type: ignore
+    neighbor_distance: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
     neighbor_id = wp.int32(0)
@@ -234,7 +232,7 @@ def store_diff_neighbor(
 
 @wp.kernel
 def init_pressure(
-    particle_p: wp.array(dtype=float),
+    particle_p: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.tid()
 
@@ -246,15 +244,15 @@ def init_pressure(
 @wp.kernel
 def compute_density(
     fluid_grid: wp.uint64,
-    ff_neighbor_num: wp.array(dtype=int),
-    ff_neighbor_list_index: wp.array(dtype=int),
-    ff_neighbor_distance: wp.array(dtype=float),
-    fs_neighbor_num: wp.array(dtype=int),
-    fs_neighbor_list: wp.array(dtype=int),
-    fs_neighbor_list_index: wp.array(dtype=int),
-    fs_neighbor_distance: wp.array(dtype=float),
-    boundary_phi: wp.array(dtype=float),
-    fluid_rho: wp.array(dtype=float),
+    ff_neighbor_num: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_distance: wp.array(dtype=float),  # type: ignore
+    fs_neighbor_num: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_distance: wp.array(dtype=float),  # type: ignore
+    boundary_phi: wp.array(dtype=float),  # type: ignore
+    fluid_rho: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
 
@@ -283,20 +281,20 @@ def compute_density(
 def predict_v_adv(
     fluid_grid: wp.uint64,
     dt: float,
-    particle_x: wp.array(dtype=wp.vec3),
-    particle_v: wp.array(dtype=wp.vec3),
-    boundary_x: wp.array(dtype=wp.vec3),
-    ff_neighbor_num: wp.array(dtype=int),
-    ff_neighbor_list: wp.array(dtype=int),
-    ff_neighbor_list_index: wp.array(dtype=int),
-    ff_neighbor_distance: wp.array(dtype=float),
-    fs_neighbor_num: wp.array(dtype=int),
-    fs_neighbor_list: wp.array(dtype=int),
-    fs_neighbor_list_index: wp.array(dtype=int),
-    fs_neighbor_distance: wp.array(dtype=float),
-    fluid_rho: wp.array(dtype=float),
-    boundary_phi: wp.array(dtype=float),
-    particle_v_adv: wp.array(dtype=wp.vec3),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    particle_v: wp.array(dtype=wp.vec3),  # type: ignore
+    boundary_x: wp.array(dtype=wp.vec3),  # type: ignore
+    ff_neighbor_num: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_distance: wp.array(dtype=float),  # type: ignore
+    fs_neighbor_num: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_distance: wp.array(dtype=float),  # type: ignore
+    fluid_rho: wp.array(dtype=float),  # type: ignore
+    boundary_phi: wp.array(dtype=float),  # type: ignore
+    particle_v_adv: wp.array(dtype=wp.vec3),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
 
@@ -346,18 +344,18 @@ def predict_v_adv(
 def predict_rho_adv(
     fluid_grid: wp.uint64,
     dt: float,
-    particle_x: wp.array(dtype=wp.vec3),
-    boundary_x: wp.array(dtype=wp.vec3),
-    particle_v_adv: wp.array(dtype=wp.vec3),
-    ff_neighbor_num: wp.array(dtype=int),
-    ff_neighbor_list: wp.array(dtype=int),
-    ff_neighbor_list_index: wp.array(dtype=int),
-    fs_neighbor_num: wp.array(dtype=int),
-    fs_neighbor_list: wp.array(dtype=int),
-    fs_neighbor_list_index: wp.array(dtype=int),
-    boundary_phi: wp.array(dtype=float),
-    fluid_rho: wp.array(dtype=float),
-    fluid_rho_adv: wp.array(dtype=float),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    boundary_x: wp.array(dtype=wp.vec3),  # type: ignore
+    particle_v_adv: wp.array(dtype=wp.vec3),  # type: ignore
+    ff_neighbor_num: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_num: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    boundary_phi: wp.array(dtype=float),  # type: ignore
+    fluid_rho: wp.array(dtype=float),  # type: ignore
+    fluid_rho_adv: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
 
@@ -394,19 +392,19 @@ def predict_rho_adv(
 def compute_term_d(
     fluid_grid: wp.uint64,
     dt: float,
-    particle_x: wp.array(dtype=wp.vec3),
-    boundary_x: wp.array(dtype=wp.vec3),
-    fluid_rho: wp.array(dtype=float),
-    ff_neighbor_num: wp.array(dtype=int),
-    ff_neighbor_list: wp.array(dtype=int),
-    ff_neighbor_list_index: wp.array(dtype=int),
-    fs_neighbor_num: wp.array(dtype=int),
-    fs_neighbor_list: wp.array(dtype=int),
-    fs_neighbor_list_index: wp.array(dtype=int),
-    boundary_phi: wp.array(dtype=float),
-    term_d_ii: wp.array(dtype=wp.vec3),
-    term_d_ij: wp.array(dtype=wp.vec3),
-    term_d_ji: wp.array(dtype=wp.vec3),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    boundary_x: wp.array(dtype=wp.vec3),  # type: ignore
+    fluid_rho: wp.array(dtype=float),  # type: ignore
+    ff_neighbor_num: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_num: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    boundary_phi: wp.array(dtype=float),  # type: ignore
+    term_d_ii: wp.array(dtype=wp.vec3),  # type: ignore
+    term_d_ij: wp.array(dtype=wp.vec3),  # type: ignore
+    term_d_ji: wp.array(dtype=wp.vec3),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
 
@@ -445,18 +443,18 @@ def compute_term_d(
 @wp.kernel
 def compute_term_a(
     fluid_grid: wp.uint64,
-    particle_x: wp.array(dtype=wp.vec3),
-    boundary_x: wp.array(dtype=wp.vec3),
-    ff_neighbor_num: wp.array(dtype=int),
-    ff_neighbor_list: wp.array(dtype=int),
-    ff_neighbor_list_index: wp.array(dtype=int),
-    fs_neighbor_num: wp.array(dtype=int),
-    fs_neighbor_list: wp.array(dtype=int),
-    fs_neighbor_list_index: wp.array(dtype=int),
-    boundary_phi: wp.array(dtype=float),
-    term_d_ii: wp.array(dtype=wp.vec3),
-    term_d_ji: wp.array(dtype=wp.vec3),
-    term_a_ii: wp.array(dtype=float),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    boundary_x: wp.array(dtype=wp.vec3),  # type: ignore
+    ff_neighbor_num: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_num: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    boundary_phi: wp.array(dtype=float),  # type: ignore
+    term_d_ii: wp.array(dtype=wp.vec3),  # type: ignore
+    term_d_ji: wp.array(dtype=wp.vec3),  # type: ignore
+    term_a_ii: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
 
@@ -490,16 +488,16 @@ def compute_term_a(
 @wp.kernel
 def compute_term_Ap_1(
     fluid_grid: wp.uint64,
-    particle_x: wp.array(dtype=wp.vec3),
-    particle_p: wp.array(dtype=float),
-    ff_neighbor_num: wp.array(dtype=int),
-    ff_neighbor_list: wp.array(dtype=int),
-    ff_neighbor_list_index: wp.array(dtype=int),
-    term_d_ii: wp.array(dtype=wp.vec3),
-    term_d_ij: wp.array(dtype=wp.vec3),
-    term_d_ji: wp.array(dtype=wp.vec3),
-    sum_d_ij_p_j: wp.array(dtype=wp.vec3),
-    term_Ap_i: wp.array(dtype=float),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    particle_p: wp.array(dtype=float),  # type: ignore
+    ff_neighbor_num: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    term_d_ii: wp.array(dtype=wp.vec3),  # type: ignore
+    term_d_ij: wp.array(dtype=wp.vec3),  # type: ignore
+    term_d_ji: wp.array(dtype=wp.vec3),  # type: ignore
+    sum_d_ij_p_j: wp.array(dtype=wp.vec3),  # type: ignore
+    term_Ap_i: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
 
@@ -527,19 +525,19 @@ def compute_term_Ap_1(
 @wp.kernel
 def compute_term_Ap_2(
     fluid_grid: wp.uint64,
-    particle_x: wp.array(dtype=wp.vec3),
-    particle_p: wp.array(dtype=float),
-    boundary_x: wp.array(dtype=wp.vec3),
-    ff_neighbor_num: wp.array(dtype=int),
-    ff_neighbor_list: wp.array(dtype=int),
-    ff_neighbor_list_index: wp.array(dtype=int),
-    fs_neighbor_num: wp.array(dtype=int),
-    fs_neighbor_list: wp.array(dtype=int),
-    fs_neighbor_list_index: wp.array(dtype=int),
-    boundary_phi: wp.array(dtype=float),
-    term_a_ii: wp.array(dtype=float),
-    sum_d_ij_p_j: wp.array(dtype=wp.vec3),
-    term_Ap_i: wp.array(dtype=float),
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
+    particle_p: wp.array(dtype=float),  # type: ignore
+    boundary_x: wp.array(dtype=wp.vec3),  # type: ignore
+    ff_neighbor_num: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list: wp.array(dtype=int),  # type: ignore
+    ff_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_num: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list: wp.array(dtype=int),  # type: ignore
+    fs_neighbor_list_index: wp.array(dtype=int),  # type: ignore
+    boundary_phi: wp.array(dtype=float),  # type: ignore
+    term_a_ii: wp.array(dtype=float),  # type: ignore
+    sum_d_ij_p_j: wp.array(dtype=wp.vec3),  # type: ignore
+    term_Ap_i: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
 
@@ -577,10 +575,10 @@ def compute_term_Ap_2(
 @wp.kernel
 def update_p(
     fluid_grid: wp.uint64,
-    fluid_rho_adv: wp.array(dtype=float),
-    term_a_ii: wp.array(dtype=float),
-    term_Ap_i: wp.array(dtype=float),
-    particle_p: wp.array(dtype=float),
+    fluid_rho_adv: wp.array(dtype=float),  # type: ignore
+    term_a_ii: wp.array(dtype=float),  # type: ignore
+    term_Ap_i: wp.array(dtype=float),  # type: ignore
+    particle_p: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.int32(wp.tid())
 
@@ -610,10 +608,10 @@ def update_rho_error(
     # fs_neighbor_list_index: wp.array(dtype=int),
     # boundary_phi: wp.array(dtype=float),
     # fluid_rho: wp.array(dtype=float),
-    fluid_rho_adv: wp.array(dtype=float),
-    term_Ap_i: wp.array(dtype=float),
-    sum_rho_error: wp.array(dtype=float),
-    num_rho_error: wp.array(dtype=int),
+    fluid_rho_adv: wp.array(dtype=float),  # type: ignore
+    term_Ap_i: wp.array(dtype=float),  # type: ignore
+    sum_rho_error: wp.array(dtype=float),  # type: ignore
+    num_rho_error: wp.array(dtype=int),  # type: ignore
     # rho_to_check: wp.array(dtype=float),
     # delta_v_p: wp.array(dtype=wp.vec3),
 ):
@@ -707,12 +705,12 @@ def update_rho_error(
 @wp.kernel
 def kick(
     inv_dt: float,
-    particle_p: wp.array(dtype=float),
-    particle_v_adv: wp.array(dtype=wp.vec3),
-    term_d_ii: wp.array(dtype=wp.vec3),
-    sum_d_ij_p_j: wp.array(dtype=wp.vec3),
-    particle_v: wp.array(dtype=wp.vec3),
-    particle_v_max: wp.array(dtype=float),
+    particle_p: wp.array(dtype=float),  # type: ignore
+    particle_v_adv: wp.array(dtype=wp.vec3),  # type: ignore
+    term_d_ii: wp.array(dtype=wp.vec3),  # type: ignore
+    sum_d_ij_p_j: wp.array(dtype=wp.vec3),  # type: ignore
+    particle_v: wp.array(dtype=wp.vec3),  # type: ignore
+    particle_v_max: wp.array(dtype=float),  # type: ignore
 ):
     tid = wp.tid()
     delta_v = inv_dt * (term_d_ii[tid] * particle_p[tid] + sum_d_ij_p_j[tid])
@@ -724,8 +722,8 @@ def kick(
 @wp.kernel
 def drift(
     dt: float,
-    particle_v: wp.array(dtype=wp.vec3),
-    particle_x: wp.array(dtype=wp.vec3),
+    particle_v: wp.array(dtype=wp.vec3),  # type: ignore
+    particle_x: wp.array(dtype=wp.vec3),  # type: ignore
     # penetration_times: wp.array(dtype=int),
 ):
     tid = wp.tid()
@@ -802,29 +800,29 @@ class IISPH:
         )
 
         # allocate arrays
-        self.v = wp.zeros(self.n, dtype=wp.vec3)
-        self.v_adv = wp.zeros(self.n, dtype=wp.vec3)
-        self.rho = wp.zeros(self.n, dtype=float)
-        self.rho_adv = wp.zeros(self.n, dtype=float)
-        self.a = wp.zeros(self.n, dtype=wp.vec3)
-        self.p = wp.zeros(self.n, dtype=float)
-        self.sum_rho_error = wp.zeros(1, dtype=float)
-        self.num_rho_error = wp.zeros(1, dtype=int)
-        self.term_a_ii = wp.zeros(self.n, dtype=float)
-        self.term_d_ii = wp.zeros(self.n, dtype=wp.vec3)
-        self.term_d_ij = wp.zeros(self.n * 60, dtype=wp.vec3)
-        self.term_d_ji = wp.zeros(self.n * 60, dtype=wp.vec3)
-        self.term_Ap_i = wp.zeros(self.n, dtype=float)
-        self.sum_d_ij_p_j = wp.zeros(self.n, dtype=wp.vec3)
-        self.ff_neighbor_num = wp.zeros(self.n, dtype=int)
-        self.ff_neighbor_list = wp.zeros(self.n * 60, dtype=int)
-        self.ff_neighbor_distance = wp.zeros(self.n * 60, dtype=float)
-        self.ff_neighbor_list_index = wp.zeros(self.n, dtype=int)
-        self.fs_neighbor_num = wp.zeros(self.n, dtype=int)
-        self.fs_neighbor_list = wp.zeros(self.n * 60, dtype=int)
-        self.fs_neighbor_distance = wp.zeros(self.n * 60, dtype=float)
-        self.fs_neighbor_list_index = wp.zeros(self.n, dtype=int)
-        self.boundary_phi = wp.zeros(self.boundary_n, dtype=float)
+        self.v = wp.zeros(self.n, dtype=wp.vec3)  # type: ignore
+        self.v_adv = wp.zeros(self.n, dtype=wp.vec3)  # type: ignore
+        self.rho = wp.zeros(self.n, dtype=float)  # type: ignore
+        self.rho_adv = wp.zeros(self.n, dtype=float)  # type: ignore
+        self.a = wp.zeros(self.n, dtype=wp.vec3)  # type: ignore
+        self.p = wp.zeros(self.n, dtype=float)  # type: ignore
+        self.boundary_phi = wp.zeros(self.boundary_n, dtype=float)  # type: ignore
+        self.sum_rho_error = wp.zeros(1, dtype=float)  # type: ignore
+        self.num_rho_error = wp.zeros(1, dtype=int)  # type: ignore
+        self.term_a_ii = wp.zeros(self.n, dtype=float)  # type: ignore
+        self.term_d_ii = wp.zeros(self.n, dtype=wp.vec3)  # type: ignore
+        self.term_d_ij = wp.zeros(self.n * 60, dtype=wp.vec3)  # type: ignore
+        self.term_d_ji = wp.zeros(self.n * 60, dtype=wp.vec3)  # type: ignore
+        self.term_Ap_i = wp.zeros(self.n, dtype=float)  # type: ignore
+        self.sum_d_ij_p_j = wp.zeros(self.n, dtype=wp.vec3)  # type: ignore
+        self.ff_neighbor_num = wp.zeros(self.n, dtype=int)  # type: ignore
+        self.ff_neighbor_list = wp.zeros(self.n * 60, dtype=int)  # type: ignore
+        self.ff_neighbor_distance = wp.zeros(self.n * 60, dtype=float)  # type: ignore
+        self.ff_neighbor_list_index = wp.zeros(self.n, dtype=int)  # type: ignore
+        self.fs_neighbor_num = wp.zeros(self.n, dtype=int)  # type: ignore
+        self.fs_neighbor_list = wp.zeros(self.n * 60, dtype=int)  # type: ignore
+        self.fs_neighbor_distance = wp.zeros(self.n * 60, dtype=float)  # type: ignore
+        self.fs_neighbor_list_index = wp.zeros(self.n, dtype=int)  # type: ignore
         # self.penetration_times = wp.zeros(1, dtype=int)
         # self.delta_v_p = wp.zeros(self.n, dtype=wp.vec3)
         # self.rho_to_check = wp.zeros(self.n, dtype=float)
@@ -1103,8 +1101,8 @@ class IISPH:
                         ],
                     )
 
-                    self.sum_rho_error = wp.zeros(1, dtype=float)
-                    self.num_rho_error = wp.zeros(1, dtype=int)
+                    self.sum_rho_error = wp.zeros(1, dtype=float)  # type: ignore
+                    self.num_rho_error = wp.zeros(1, dtype=int)  # type: ignore
                     wp.launch(
                         kernel=update_rho_error,
                         dim=self.n,
@@ -1136,7 +1134,7 @@ class IISPH:
                     loop += 1
 
             with wp.ScopedTimer("integration", active=self.verbose):
-                v_max = wp.zeros(1, dtype=float)
+                v_max = wp.zeros(1, dtype=float)  # type: ignore
                 # kick
                 wp.launch(
                     kernel=kick,
@@ -1234,7 +1232,7 @@ class IISPH:
         self.fluid_grid.build(self.x, SMOOTHING_LENGTH)
 
         # search fluid neighbors for fluid
-        neighbor_pointer = wp.zeros(1, dtype=int)
+        neighbor_pointer = wp.zeros(1, dtype=int)  # type: ignore
 
         wp.launch(
             kernel=count_same_neighbor,
@@ -1256,7 +1254,6 @@ class IISPH:
             inputs=[
                 self.fluid_grid.id,
                 self.x,
-                self.ff_neighbor_num,
                 self.ff_neighbor_list_index,
             ],
             outputs=[
@@ -1266,7 +1263,7 @@ class IISPH:
         )
 
         # search boundary neighbors for fluid
-        neighbor_pointer = wp.zeros(1, dtype=int)
+        neighbor_pointer = wp.zeros(1, dtype=int)  # type: ignore
 
         wp.launch(
             kernel=count_diff_neighbor,
@@ -1292,7 +1289,6 @@ class IISPH:
                 self.boundary_grid.id,
                 self.x,
                 self.boundary_x,
-                self.fs_neighbor_num,
                 self.fs_neighbor_list_index,
             ],
             outputs=[
