@@ -19,47 +19,39 @@ from ..main import *
 from .sph_funcs import W_table, grad_spline_W, grad_W_table, spline_W
 
 
-def initialize_fluid(min_point, max_point, spacing):
+def initialize_particles(
+    min_point=None, max_point=None, spacing=DIAMETER, fluid_depth=0.0, boundary_layers=3
+):
     """
-    Generate fluid particles in a rectangular region using numpy's meshgrid.
+    1. Generate boundary particles for the box
+    2. Generate fluid particles in a rectangular region if min_point and max_point specified
+    3. Fill the bottom of the box with fluid up to fluid_depth height
+
+    Returns:
+        (boundary_particles, boundary_count), (fluid_particles, fluid_count)
     """
-    assert 0 < min_point[0] < max_point[0] < BOX_WIDTH
-    assert 0 < min_point[1] < max_point[1] < BOX_HEIGHT
-    assert 0 < min_point[2] < max_point[2] < BOX_LENGTH
+    assert spacing > 0, "Particle spacing must be positive"
 
-    x = np.arange(min_point[0], max_point[0], spacing)
-    y = np.arange(min_point[1], max_point[1], spacing)
-    z = np.arange(min_point[2], max_point[2], spacing)
+    x_range = range(-boundary_layers, int(BOX_WIDTH / spacing) + boundary_layers)
+    y_range = range(-boundary_layers, int(BOX_HEIGHT / spacing) + boundary_layers)
+    z_range = range(-boundary_layers, int(BOX_LENGTH / spacing) + boundary_layers)
 
-    # Create 3D grid of positions
-    xx, yy, zz = np.meshgrid(x, y, z, indexing="ij")
-    positions = np.stack([xx.ravel(), yy.ravel(), zz.ravel()]).T
-
-    # Convert to warp array
-    particles_array = wp.array(positions, dtype=wp.vec3)
-
-    return particles_array, positions.shape[0]
-
-
-def initialize_box(layers, spacing):
-    """
-    Generate boundary particle positions for a box with exactly the specified number of layers.
-    """
-    x_range = range(-layers, int(BOX_WIDTH / spacing) + layers)
-    y_range = range(-layers, int(BOX_HEIGHT / spacing) + layers)
-    z_range = range(-layers, int(BOX_LENGTH / spacing) + layers)
-
-    # Calculate domain bounds (interior region)
     x_min, x_max = 0, int(BOX_WIDTH / spacing) - 1
     y_min, y_max = 0, int(BOX_HEIGHT / spacing) - 1
     z_min, z_max = 0, int(BOX_LENGTH / spacing) - 1
 
-    particles = []
+    boundary_particles = []
+    fluid_particles = []
 
-    # Generate all candidate positions
+    fluid_y_max = int(fluid_depth / spacing) if fluid_depth > 0 else -1
+
     for x_idx in x_range:
         for y_idx in y_range:
             for z_idx in z_range:
+                x = x_idx * spacing
+                y = y_idx * spacing
+                z = z_idx * spacing
+
                 is_outside = (
                     x_idx < x_min
                     or x_idx > x_max
@@ -70,24 +62,61 @@ def initialize_box(layers, spacing):
                 )
 
                 is_within_layers = (
-                    x_idx >= x_min - layers
-                    and x_idx <= x_max + layers
-                    and y_idx >= y_min - layers
-                    and y_idx <= y_max + layers
-                    and z_idx >= z_min - layers
-                    and z_idx <= z_max + layers
+                    x_idx >= x_min - boundary_layers
+                    and x_idx <= x_max + boundary_layers
+                    and y_idx >= y_min - boundary_layers
+                    and y_idx <= y_max + boundary_layers
+                    and z_idx >= z_min - boundary_layers
+                    and z_idx <= z_max + boundary_layers
                 )
 
+                # Generate boundary particles
                 if is_outside and is_within_layers:
-                    # Convert to physical coordinates
-                    x = x_idx * spacing
-                    y = y_idx * spacing
-                    z = z_idx * spacing
-                    particles.append([x, y, z])
+                    boundary_particles.append([x, y, z])
 
-    particles_array = wp.array(particles, dtype=wp.vec3)
+                # Generate fluid pool particles
+                elif (not is_outside) and fluid_depth > 0 and y_idx <= fluid_y_max:
+                    in_rect_region = False
+                    if min_point is not None and max_point is not None:
+                        in_rect_region = (
+                            min_point[0] - spacing < x < max_point[0] + spacing
+                            and min_point[1] - spacing < y < max_point[1] + spacing
+                            and min_point[2] - spacing < z < max_point[2] + spacing
+                        )
 
-    return particles_array, len(particles)
+                    if not in_rect_region:
+                        fluid_particles.append([x, y, z])
+
+    # Add fluid particles in rectangular region if specified
+    if min_point is not None and max_point is not None:
+        assert (
+            0 < min_point[0] < max_point[0] < BOX_WIDTH
+        ), "Invalid X range for rectangle"
+        assert (
+            0 < min_point[1] < max_point[1] < BOX_HEIGHT
+        ), "Invalid Y range for rectangle"
+        assert (
+            0 < min_point[2] < max_point[2] < BOX_LENGTH
+        ), "Invalid Z range for rectangle"
+
+        x_rect = np.arange(min_point[0], max_point[0], spacing)
+        y_rect = np.arange(min_point[1], max_point[1], spacing)
+        z_rect = np.arange(min_point[2], max_point[2], spacing)
+
+        xx, yy, zz = np.meshgrid(x_rect, y_rect, z_rect, indexing="ij")
+        rect_positions = np.stack([xx.ravel(), yy.ravel(), zz.ravel()]).T
+
+        for pos in rect_positions:
+            fluid_particles.append(pos)
+
+    # Convert to warp arrays and return
+    boundary_array = wp.array(boundary_particles, dtype=wp.vec3)
+    fluid_array = wp.array(fluid_particles, dtype=wp.vec3)
+
+    return (boundary_array, len(boundary_particles)), (
+        fluid_array,
+        len(fluid_particles),
+    )
 
 
 @wp.kernel
@@ -99,22 +128,25 @@ def compute_boundary_density(
 ):
     tid = wp.int32(wp.tid())
 
-    # order threads by cell
-    i = wp.hash_grid_point_id(boundary_grid, tid)
+    # # order threads by cell
+    # i = wp.hash_grid_point_id(boundary_grid, tid)
 
-    # get local particle variables
-    x = boundary_x[i]
+    # # get local particle variables
+    # x = boundary_x[i]
 
-    # store density
-    rho = spline_W(0.0, W_table)
+    # # store density
+    # rho = spline_W(0.0, W_table)
 
-    # loop through neighbors to compute density
-    for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):  # type: ignore
-        distance = wp.length(x - boundary_x[index])
-        if distance < SMOOTHING_LENGTH and index != i:
-            rho += spline_W(distance, W_table)
+    # # loop through neighbors to compute density
+    # for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):  # type: ignore
+    #     distance = wp.length(x - boundary_x[index])
+    #     if distance < SMOOTHING_LENGTH and index != i:
+    #         rho += spline_W(distance, W_table)
 
-    boundary_phi[i] = RHO_0 / rho
+    # boundary_phi[i] = RHO_0 / rho
+
+    # TODO check this
+    boundary_phi[tid] = FLUID_MASS
 
 
 @wp.kernel
@@ -791,13 +823,13 @@ class IISPH:
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
 
-        # set fluid
-        min_point = (BOX_WIDTH * 0.2, BOX_HEIGHT * 0.02, BOX_LENGTH * 0.2)
-        max_point = (BOX_WIDTH * 0.8, BOX_HEIGHT * 0.3, BOX_LENGTH * 0.8)
-        self.x, self.n = initialize_fluid(min_point, max_point, DIAMETER)
-
-        # set boundary
-        self.boundary_x, self.boundary_n = initialize_box(self.boundary_layer, DIAMETER)
+        min_point = (BOX_WIDTH * 0.38, BOX_HEIGHT * 0.31, BOX_LENGTH * 0.38)
+        max_point = (BOX_WIDTH * 0.62, BOX_HEIGHT * 0.37, BOX_LENGTH * 0.62)
+        (self.boundary_x, self.boundary_n), (self.x, self.n) = initialize_particles(
+            min_point=min_point,
+            max_point=max_point,
+            fluid_depth=0.3 * BOX_HEIGHT,
+        )
 
         # create hash array
         self.fluid_grid = wp.HashGrid(
@@ -1223,7 +1255,7 @@ class IISPH:
         renderer.begin_frame(self.sim_time)
         renderer.render_points(
             points=self.x.numpy(),
-            radius=wp.constant(DIAMETER / 2.0),
+            radius=wp.constant(DIAMETER / 1.6),
             name="fluid",
             colors=(0.5, 0.5, 0.8),
         )
