@@ -9,6 +9,7 @@ package-mode = false
 [tool.poetry.dependencies]
 python = "3.12.8"
 warp-lang = "^1.6"
+tqdm = "^4.67"
 pyglet = "^2.1"
 usd-core = "^25.2"
 
