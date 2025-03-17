@@ -16,7 +16,7 @@ import warp as wp
 import warp.render
 
 from ..main import *
-from .sph_funcs import *
+from .sph_funcs import W_table, grad_spline_W, grad_W_table, spline_W
 
 
 def initialize_fluid(min_point, max_point, spacing):
@@ -92,6 +92,7 @@ def initialize_box(layers, spacing):
 
 @wp.kernel
 def compute_boundary_density(
+    W_table: wp.array(dtype=wp.float32),  # type: ignore
     boundary_grid: wp.uint64,
     boundary_x: wp.array(dtype=wp.vec3),  # type: ignore
     boundary_phi: wp.array(dtype=float),  # type: ignore
@@ -105,13 +106,13 @@ def compute_boundary_density(
     x = boundary_x[i]
 
     # store density
-    rho = spline_W(0.0)
+    rho = spline_W(0.0, W_table)
 
     # loop through neighbors to compute density
     for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):  # type: ignore
         distance = wp.length(x - boundary_x[index])
         if distance < SMOOTHING_LENGTH and index != i:
-            rho += spline_W(distance)
+            rho += spline_W(distance, W_table)
 
     boundary_phi[i] = RHO_0 / rho
 
@@ -243,6 +244,7 @@ def init_pressure(
 
 @wp.kernel
 def compute_density(
+    W_table: wp.array(dtype=wp.float32),  # type: ignore
     fluid_grid: wp.uint64,
     ff_neighbor_num: wp.array(dtype=int),  # type: ignore
     ff_neighbor_list_index: wp.array(dtype=int),  # type: ignore
@@ -267,18 +269,22 @@ def compute_density(
     for j in range(
         ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
     ):
-        term_1 += spline_W(ff_neighbor_distance[j])
+        term_1 += spline_W(ff_neighbor_distance[j], W_table)
 
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
-        term_2 += spline_W(fs_neighbor_distance[j]) * boundary_phi[fs_neighbor_list[j]]
+        term_2 += (
+            spline_W(fs_neighbor_distance[j], W_table)
+            * boundary_phi[fs_neighbor_list[j]]
+        )
 
-    fluid_rho[i] = term_1 * FLUID_MASS + term_2 + spline_W(0.0) * FLUID_MASS
+    fluid_rho[i] = term_1 * FLUID_MASS + term_2 + spline_W(0.0, W_table) * FLUID_MASS
 
 
 @wp.kernel
 def predict_v_adv(
+    grad_W_table: wp.array(dtype=wp.float32),  # type: ignore
     fluid_grid: wp.uint64,
     dt: float,
     particle_x: wp.array(dtype=wp.vec3),  # type: ignore
@@ -314,7 +320,7 @@ def predict_v_adv(
         index = ff_neighbor_list[j]
         x_ij = particle_x[index] - x_i
         term_1 -= (
-            grad_spline_W(x_ij)
+            grad_spline_W(x_ij, grad_W_table)
             * wp.dot(v_i - particle_v[index], x_ij)
             / fluid_rho[index]
             / ff_neighbor_distance[j] ** 2.0
@@ -326,7 +332,7 @@ def predict_v_adv(
         index = fs_neighbor_list[j]
         x_ib = boundary_x[index] - x_i
         term_2 -= (
-            grad_spline_W(x_ib)
+            grad_spline_W(x_ib, grad_W_table)
             * boundary_phi[index]
             * wp.dot(v_i, x_ib)
             / fs_neighbor_distance[j] ** 2.0
@@ -342,6 +348,7 @@ def predict_v_adv(
 
 @wp.kernel
 def predict_rho_adv(
+    grad_W_table: wp.array(dtype=wp.float32),  # type: ignore
     fluid_grid: wp.uint64,
     dt: float,
     particle_x: wp.array(dtype=wp.vec3),  # type: ignore
@@ -375,14 +382,14 @@ def predict_rho_adv(
     ):
         index = ff_neighbor_list[j]
         v_ij = v_adv - particle_v_adv[index]
-        grad_W_ij = grad_spline_W(particle_x[index] - x)
+        grad_W_ij = grad_spline_W(particle_x[index] - x, grad_W_table)
         term_1 += wp.dot(v_ij, grad_W_ij)
 
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
         index = fs_neighbor_list[j]
-        grad_W_ib = grad_spline_W(boundary_x[index] - x)
+        grad_W_ib = grad_spline_W(boundary_x[index] - x, grad_W_table)
         term_2 += wp.dot(v_adv, grad_W_ib) * boundary_phi[index]
 
     fluid_rho_adv[i] = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
@@ -390,6 +397,7 @@ def predict_rho_adv(
 
 @wp.kernel
 def compute_term_d(
+    grad_W_table: wp.array(dtype=wp.float32),  # type: ignore
     fluid_grid: wp.uint64,
     dt: float,
     particle_x: wp.array(dtype=wp.vec3),  # type: ignore
@@ -424,7 +432,7 @@ def compute_term_d(
         ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
     ):
         index = ff_neighbor_list[j]
-        grad_W_ij = grad_spline_W(particle_x[index] - x)
+        grad_W_ij = grad_spline_W(particle_x[index] - x, grad_W_table)
         term_1 -= grad_W_ij
 
         term_d_ij[j] = -grad_W_ij * term_3 / fluid_rho[index] ** 2.0
@@ -434,7 +442,7 @@ def compute_term_d(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
         index = fs_neighbor_list[j]
-        grad_W_ib = grad_spline_W(boundary_x[index] - x)
+        grad_W_ib = grad_spline_W(boundary_x[index] - x, grad_W_table)
         term_2 -= grad_W_ib * boundary_phi[index]
 
     term_d_ii[i] = (term_1 * FLUID_MASS + term_2) * dt**2.0 / rho**2.0
@@ -442,6 +450,7 @@ def compute_term_d(
 
 @wp.kernel
 def compute_term_a(
+    grad_W_table: wp.array(dtype=wp.float32),  # type: ignore
     fluid_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),  # type: ignore
     boundary_x: wp.array(dtype=wp.vec3),  # type: ignore
@@ -472,14 +481,14 @@ def compute_term_a(
     for j in range(
         ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
     ):
-        grad_W_ij = grad_spline_W(particle_x[ff_neighbor_list[j]] - x)
+        grad_W_ij = grad_spline_W(particle_x[ff_neighbor_list[j]] - x, grad_W_table)
         term_1 += wp.dot((d_ii - term_d_ji[j]), grad_W_ij)
 
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
         index = fs_neighbor_list[j]
-        grad_W_ib = grad_spline_W(boundary_x[index] - x)
+        grad_W_ib = grad_spline_W(boundary_x[index] - x, grad_W_table)
         term_2 += wp.dot(d_ii, grad_W_ib) * boundary_phi[index]
 
     term_a_ii[i] = term_1 * FLUID_MASS + term_2
@@ -487,6 +496,7 @@ def compute_term_a(
 
 @wp.kernel
 def compute_term_Ap_1(
+    grad_W_table: wp.array(dtype=wp.float32),  # type: ignore
     fluid_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),  # type: ignore
     particle_p: wp.array(dtype=float),  # type: ignore
@@ -516,7 +526,7 @@ def compute_term_Ap_1(
     ):
         index = ff_neighbor_list[j]
         term = term_d_ji[j] * particle_p[i] - term_d_ii[index] * particle_p[index]
-        term_1 += wp.dot(term, grad_spline_W(particle_x[index] - x))
+        term_1 += wp.dot(term, grad_spline_W(particle_x[index] - x, grad_W_table))
         sum_d_ij_p_j[i] += term_d_ij[j] * particle_p[index]
 
     term_Ap_i[i] = term_1 * FLUID_MASS
@@ -524,6 +534,7 @@ def compute_term_Ap_1(
 
 @wp.kernel
 def compute_term_Ap_2(
+    grad_W_table: wp.array(dtype=wp.float32),  # type: ignore
     fluid_grid: wp.uint64,
     particle_x: wp.array(dtype=wp.vec3),  # type: ignore
     particle_p: wp.array(dtype=float),  # type: ignore
@@ -557,7 +568,8 @@ def compute_term_Ap_2(
     ):
         index = ff_neighbor_list[j]
         term_1 += wp.dot(
-            sum_d_ij_p_j_i - sum_d_ij_p_j[index], grad_spline_W(particle_x[index] - x)
+            sum_d_ij_p_j_i - sum_d_ij_p_j[index],
+            grad_spline_W(particle_x[index] - x, grad_W_table),
         )
 
     for j in range(
@@ -565,7 +577,7 @@ def compute_term_Ap_2(
     ):
         index = fs_neighbor_list[j]
         term_2 += (
-            wp.dot(sum_d_ij_p_j_i, grad_spline_W(boundary_x[index] - x))
+            wp.dot(sum_d_ij_p_j_i, grad_spline_W(boundary_x[index] - x, grad_W_table))
             * boundary_phi[index]
         )
 
@@ -833,6 +845,7 @@ class IISPH:
             kernel=compute_boundary_density,
             dim=self.boundary_n,
             inputs=[
+                W_table,
                 self.boundary_grid.id,
                 self.boundary_x,
             ],
@@ -892,6 +905,7 @@ class IISPH:
                     kernel=compute_density,
                     dim=self.n,
                     inputs=[
+                        W_table,
                         self.fluid_grid.id,
                         self.ff_neighbor_num,
                         self.ff_neighbor_list_index,
@@ -910,6 +924,7 @@ class IISPH:
                     kernel=predict_v_adv,
                     dim=self.n,
                     inputs=[
+                        grad_W_table,
                         self.fluid_grid.id,
                         self.dt,
                         self.x,
@@ -934,6 +949,7 @@ class IISPH:
                     kernel=predict_rho_adv,
                     dim=self.n,
                     inputs=[
+                        grad_W_table,
                         self.fluid_grid.id,
                         self.dt,
                         self.x,
@@ -956,6 +972,7 @@ class IISPH:
                     kernel=compute_term_d,
                     dim=self.n,
                     inputs=[
+                        grad_W_table,
                         self.fluid_grid.id,
                         self.dt,
                         self.x,
@@ -981,6 +998,7 @@ class IISPH:
                     kernel=compute_term_a,
                     dim=self.n,
                     inputs=[
+                        grad_W_table,
                         self.fluid_grid.id,
                         self.x,
                         self.boundary_x,
@@ -1002,6 +1020,7 @@ class IISPH:
                     kernel=compute_term_Ap_1,
                     dim=self.n,
                     inputs=[
+                        grad_W_table,
                         self.fluid_grid.id,
                         self.x,
                         self.p,
@@ -1022,6 +1041,7 @@ class IISPH:
                     kernel=compute_term_Ap_2,
                     dim=self.n,
                     inputs=[
+                        grad_W_table,
                         self.fluid_grid.id,
                         self.x,
                         self.p,
@@ -1062,6 +1082,7 @@ class IISPH:
                         kernel=compute_term_Ap_1,
                         dim=self.n,
                         inputs=[
+                            grad_W_table,
                             self.fluid_grid.id,
                             self.x,
                             self.p,
@@ -1082,6 +1103,7 @@ class IISPH:
                         kernel=compute_term_Ap_2,
                         dim=self.n,
                         inputs=[
+                            grad_W_table,
                             self.fluid_grid.id,
                             self.x,
                             self.p,
