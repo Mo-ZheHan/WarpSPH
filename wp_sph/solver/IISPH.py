@@ -823,12 +823,12 @@ class IISPH:
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
 
-        min_point = (BOX_WIDTH * 0.38, BOX_HEIGHT * 0.31, BOX_LENGTH * 0.38)
-        max_point = (BOX_WIDTH * 0.62, BOX_HEIGHT * 0.37, BOX_LENGTH * 0.62)
+        min_point = (0.05, BOX_HEIGHT * 0.2, 0.05)
+        max_point = (BOX_WIDTH * 0.4, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.5)
         (self.boundary_x, self.boundary_n), (self.x, self.n) = initialize_particles(
             min_point=min_point,
             max_point=max_point,
-            fluid_depth=0.3 * BOX_HEIGHT,
+            fluid_depth=0.2 * BOX_HEIGHT,
         )
 
         # create hash array

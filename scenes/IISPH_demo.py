@@ -20,7 +20,7 @@ parser.add_argument(
     help="Path to the output USD file.",
 )
 parser.add_argument(
-    "--num_frames", type=int, default=40000, help="Total number of frames."
+    "--num_frames", type=int, default=120000, help="Total number of frames."
 )
 parser.add_argument(
     "--preview",
@@ -34,15 +34,15 @@ parser.add_argument(
 )
 
 args = parser.parse_known_args()[0]
-pbar = tqdm(
-    total=args.num_frames,
-    desc="Simulation Progress",
-    bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
-)
 
 with wp.ScopedDevice(args.device):
     sph_demo = wsph.solver.IISPH(
         stage_path=args.stage_path, preview=args.preview, verbose=args.verbose
+    )
+    pbar = tqdm(
+        total=args.num_frames,
+        desc="Simulation Progress",
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
     )
     if sph_demo.previewer:
         sph_demo.previewer.paused = True
