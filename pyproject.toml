@@ -1,18 +1,12 @@
-[tool.poetry]
-name = "WarpSim"
+[project]
+name = "warpsph"
 version = "0.1.0"
 description = ""
-authors = ["Mo Zhehan <mozh23@mails.tsinghua.edu.cn>"]
 readme = "README.md"
-package-mode = false
-
-[tool.poetry.dependencies]
-python = "3.12.8"
-warp-lang = "^1.6"
-tqdm = "^4.67"
-pyglet = "^2.1"
-usd-core = "^25.2"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires-python = ">=3.12"
+dependencies = [
+    "pyglet>=2.1",
+    "tqdm>=4.67",
+    "usd-core>=25.5",
+    "warp-lang>=1.7",
+]
