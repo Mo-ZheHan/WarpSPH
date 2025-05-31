@@ -722,8 +722,8 @@ class IISPH:
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
 
-        min_point = (0.05, BOX_HEIGHT * 0.2, 0.05)
-        max_point = (BOX_WIDTH * 0.4, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.5)
+        min_point = (BOX_WIDTH * 0.8, BOX_HEIGHT * 0.2, BOX_LENGTH * 0.8)
+        max_point = (BOX_WIDTH * 0.9, BOX_HEIGHT * 0.3, BOX_LENGTH * 0.9)
         self.init_particles(
             min_point=min_point,
             max_point=max_point,
@@ -925,7 +925,7 @@ class IISPH:
             print(f"Loaded model {filename} with {len(model)} particles")
             model_list.append(model)
 
-        add_model("house.obj", 2e-3)
+        add_model("house.obj", 1e-2)
 
         # Convert to warp arrays and return
         for model in model_list:
