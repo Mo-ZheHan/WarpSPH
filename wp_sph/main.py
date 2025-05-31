@@ -1,4 +1,13 @@
+from pathlib import Path
+
 import warp as wp
+
+MODEL_DIR = Path(__file__).parents[1] / "models"
+
+
+def model_dir(filename):
+    return MODEL_DIR / filename
+
 
 ###########################################################################
 # Global variable settings
@@ -10,9 +19,9 @@ RHO_0 = 1.0e3
 INV_SMALL = 1.0e-6
 
 # Scene settings
-BOX_WIDTH = 1.2
-BOX_HEIGHT = 1.2
-BOX_LENGTH = 1.0
+BOX_WIDTH = 3.0
+BOX_HEIGHT = 3.0
+BOX_LENGTH = 2.0
 
 ###########################################################################
 # Computed intermediate variables

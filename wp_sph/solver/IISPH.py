@@ -16,6 +16,7 @@ import warp as wp
 import warp.render
 
 from ..main import *
+from .model import load_model
 from .sph_funcs import W_table, grad_spline_W, grad_W_table, spline_W
 
 
@@ -28,25 +29,22 @@ def compute_boundary_density(
 ):
     tid = wp.int32(wp.tid())
 
-    # # order threads by cell
-    # i = wp.hash_grid_point_id(boundary_grid, tid)
+    # order threads by cell
+    i = wp.hash_grid_point_id(boundary_grid, tid)
 
-    # # get local particle variables
-    # x = boundary_x[i]
+    # get local particle variables
+    x = boundary_x[i]
 
-    # # store density
-    # rho = spline_W(0.0, W_table)
+    # store density
+    rho = spline_W(0.0, W_table)
 
-    # # loop through neighbors to compute density
-    # for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):  # type: ignore
-    #     distance = wp.length(x - boundary_x[index])
-    #     if distance < SMOOTHING_LENGTH and index != i:
-    #         rho += spline_W(distance, W_table)
+    # loop through neighbors to compute density
+    for index in wp.hash_grid_query(boundary_grid, x, SMOOTHING_LENGTH):  # type: ignore
+        distance = wp.length(x - boundary_x[index])
+        if distance < SMOOTHING_LENGTH and index != i:
+            rho += spline_W(distance, W_table)  # type: ignore
 
-    # boundary_phi[i] = RHO_0 / rho
-
-    # TODO check this
-    boundary_phi[tid] = FLUID_MASS
+    boundary_phi[i] = RHO_0 / rho  # type: ignore
 
 
 @wp.kernel
@@ -729,7 +727,7 @@ class IISPH:
         self.init_particles(
             min_point=min_point,
             max_point=max_point,
-            fluid_depth=0.2 * BOX_HEIGHT,
+            # fluid_depth=0.2 * BOX_HEIGHT,
         )
 
         # create hash array
@@ -889,6 +887,8 @@ class IISPH:
                         if not in_rect_region:
                             fluid_particles.append([x, y, z])
 
+        self.boundary_hide_n = len(boundary_particles)
+
         # Add fluid particles in rectangular region if specified
         if min_point is not None and max_point is not None:
             assert (
@@ -911,7 +911,25 @@ class IISPH:
             for pos in rect_positions:
                 fluid_particles.append(pos)
 
+        # Add rigid particles from mesh
+        model_list = []
+
+        def add_model(
+            filename,
+            scale=1.0,
+            pos=np.zeros(3),
+            rot=np.eye(3),
+            spacing=DIAMETER,
+        ):
+            model = load_model(filename, scale, pos, rot, spacing)
+            print(f"Loaded model {filename} with {len(model)} particles")
+            model_list.append(model)
+
+        add_model("house.obj", 2e-3)
+
         # Convert to warp arrays and return
+        for model in model_list:
+            boundary_particles.extend(model.tolist())
         self.boundary_x = wp.array(boundary_particles, dtype=wp.vec3)
         self.boundary_v = wp.zeros_like(self.boundary_x)
         self.boundary_n = len(boundary_particles)
@@ -1260,12 +1278,13 @@ class IISPH:
             name="fluid",
             colors=(0.5, 0.5, 0.8),
         )
-        # renderer.render_points(
-        #     points=self.boundary_x.numpy(),
-        #     radius=wp.constant(DIAMETER / 1.4),
-        #     name="boundary",
-        #     colors=(0.6, 0.7, 0.8),
-        # )
+        rigid_body = self.boundary_x.numpy()[self.boundary_hide_n :]
+        renderer.render_points(
+            points=rigid_body,
+            radius=wp.constant(DIAMETER / 1.4),
+            name="boundary",
+            colors=(0.6, 0.7, 0.8),
+        )
         renderer.end_frame()
 
     def render(self):
