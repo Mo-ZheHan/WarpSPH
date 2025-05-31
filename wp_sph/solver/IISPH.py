@@ -11,113 +11,18 @@
 #
 ###########################################################################
 
+import os
+
 import numpy as np
 import warp as wp
 import warp.render
 
 from ..main import *
+from .model import RigidBuilder
 from .sph_funcs import W_table, grad_spline_W, grad_W_table, spline_W
 
-
-def initialize_particles(
-    min_point=None, max_point=None, spacing=DIAMETER, fluid_depth=0.0, boundary_layers=3
-):
-    """
-    1. Generate boundary particles for the box
-    2. Generate fluid particles in a rectangular region if min_point and max_point specified
-    3. Fill the bottom of the box with fluid up to fluid_depth height
-
-    Returns:
-        (boundary_particles, boundary_count), (fluid_particles, fluid_count)
-    """
-    assert spacing > 0, "Particle spacing must be positive"
-
-    x_range = range(-boundary_layers, int(BOX_WIDTH / spacing) + boundary_layers)
-    y_range = range(-boundary_layers, int(BOX_HEIGHT / spacing) + boundary_layers)
-    z_range = range(-boundary_layers, int(BOX_LENGTH / spacing) + boundary_layers)
-
-    x_min, x_max = 0, int(BOX_WIDTH / spacing) - 1
-    y_min, y_max = 0, int(BOX_HEIGHT / spacing) - 1
-    z_min, z_max = 0, int(BOX_LENGTH / spacing) - 1
-
-    boundary_particles = []
-    fluid_particles = []
-
-    fluid_y_max = int(fluid_depth / spacing) if fluid_depth > 0 else -1
-
-    for x_idx in x_range:
-        for y_idx in y_range:
-            for z_idx in z_range:
-                x = x_idx * spacing
-                y = y_idx * spacing
-                z = z_idx * spacing
-
-                is_outside = (
-                    x_idx < x_min
-                    or x_idx > x_max
-                    or y_idx < y_min
-                    or y_idx > y_max
-                    or z_idx < z_min
-                    or z_idx > z_max
-                )
-
-                is_within_layers = (
-                    x_idx >= x_min - boundary_layers
-                    and x_idx <= x_max + boundary_layers
-                    and y_idx >= y_min - boundary_layers
-                    and y_idx <= y_max + boundary_layers
-                    and z_idx >= z_min - boundary_layers
-                    and z_idx <= z_max + boundary_layers
-                )
-
-                # Generate boundary particles
-                if is_outside and is_within_layers:
-                    boundary_particles.append([x, y, z])
-
-                # Generate fluid pool particles
-                elif (not is_outside) and fluid_depth > 0 and y_idx <= fluid_y_max:
-                    in_rect_region = False
-                    if min_point is not None and max_point is not None:
-                        in_rect_region = (
-                            min_point[0] - spacing < x < max_point[0] + spacing
-                            and min_point[1] - spacing < y < max_point[1] + spacing
-                            and min_point[2] - spacing < z < max_point[2] + spacing
-                        )
-
-                    if not in_rect_region:
-                        fluid_particles.append([x, y, z])
-
-    # Add fluid particles in rectangular region if specified
-    if min_point is not None and max_point is not None:
-        assert (
-            0 < min_point[0] < max_point[0] < BOX_WIDTH
-        ), "Invalid X range for rectangle"
-        assert (
-            0 < min_point[1] < max_point[1] < BOX_HEIGHT
-        ), "Invalid Y range for rectangle"
-        assert (
-            0 < min_point[2] < max_point[2] < BOX_LENGTH
-        ), "Invalid Z range for rectangle"
-
-        x_rect = np.arange(min_point[0], max_point[0], spacing)
-        y_rect = np.arange(min_point[1], max_point[1], spacing)
-        z_rect = np.arange(min_point[2], max_point[2], spacing)
-
-        xx, yy, zz = np.meshgrid(x_rect, y_rect, z_rect, indexing="ij")
-        rect_positions = np.stack([xx.ravel(), yy.ravel(), zz.ravel()]).T
-
-        for pos in rect_positions:
-            fluid_particles.append(pos)
-
-    # Convert to warp arrays and return
-    boundary_array = wp.array(boundary_particles, dtype=wp.vec3)
-    fluid_array = wp.array(fluid_particles, dtype=wp.vec3)
-
-    return (boundary_array, len(boundary_particles)), (
-        fluid_array,
-        len(fluid_particles),
-    )
-
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+bunny_path = os.path.join(CURRENT_DIR, "../model/bunny.ply")
 
 @wp.kernel
 def compute_boundary_density(
@@ -301,7 +206,7 @@ def compute_density(
     for j in range(
         ff_neighbor_list_index[i], ff_neighbor_list_index[i] + ff_neighbor_num[i]
     ):
-        term_1 += spline_W(ff_neighbor_distance[j], W_table)
+        term_1 += spline_W(ff_neighbor_distance[j], W_table)  # type: ignore
 
     for j in range(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
@@ -311,7 +216,7 @@ def compute_density(
             * boundary_phi[fs_neighbor_list[j]]
         )
 
-    fluid_rho[i] = term_1 * FLUID_MASS + term_2 + spline_W(0.0, W_table) * FLUID_MASS
+    fluid_rho[i] = term_1 * FLUID_MASS + term_2 + spline_W(0.0, W_table) * FLUID_MASS  # type: ignore
 
 
 @wp.kernel
@@ -467,7 +372,7 @@ def compute_term_d(
         grad_W_ij = grad_spline_W(particle_x[index] - x, grad_W_table)
         term_1 -= grad_W_ij
 
-        term_d_ij[j] = -grad_W_ij * term_3 / fluid_rho[index] ** 2.0
+        term_d_ij[j] = -grad_W_ij * term_3 / fluid_rho[index] ** 2.0  # type: ignore
         term_d_ji[j] = grad_W_ij * term_3 / rho**2.0
 
     for j in range(
@@ -823,13 +728,10 @@ class IISPH:
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
 
+        self.rigid_index = []
         min_point = (0.05, BOX_HEIGHT * 0.2, 0.05)
         max_point = (BOX_WIDTH * 0.4, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.5)
-        (self.boundary_x, self.boundary_n), (self.x, self.n) = initialize_particles(
-            min_point=min_point,
-            max_point=max_point,
-            fluid_depth=0.2 * BOX_HEIGHT,
-        )
+        self.init_model(min_point, max_point, fluid_depth=0.2 * BOX_HEIGHT)
 
         # create hash array
         self.fluid_grid = wp.HashGrid(
@@ -917,6 +819,123 @@ class IISPH:
             self.previewer = previewer
         else:
             self.previewer = None
+
+    def init_model(
+        self,
+        min_point=None,
+        max_point=None,
+        spacing=DIAMETER,
+        fluid_depth=0.0,
+        boundary_layers=3,
+    ):
+        rigid_builder = RigidBuilder()
+        rigid_particles = []
+
+        rigid_particles.append(rigid_builder.add_rigid(bunny_path, scale=0.2))
+        rigid_particles.append(
+            rigid_builder.add_rigid(
+                bunny_path,
+                scale=0.2,
+                origin=wp.transform(
+                    wp.vec3(1.0, 2.0, 3.0),
+                    wp.quat_from_axis_angle(wp.vec3(0.0, 1.0, 0.0), wp.degrees(30.0)),
+                ),
+            )
+        )
+
+        self.model = rigid_builder.finalize()
+
+        assert spacing > 0, "Particle spacing must be positive"
+
+        x_range = range(-boundary_layers, int(BOX_WIDTH / spacing) + boundary_layers)
+        y_range = range(-boundary_layers, int(BOX_HEIGHT / spacing) + boundary_layers)
+        z_range = range(-boundary_layers, int(BOX_LENGTH / spacing) + boundary_layers)
+
+        x_min, x_max = 0, int(BOX_WIDTH / spacing) - 1
+        y_min, y_max = 0, int(BOX_HEIGHT / spacing) - 1
+        z_min, z_max = 0, int(BOX_LENGTH / spacing) - 1
+
+        boundary_particles = []
+        fluid_particles = []
+
+        fluid_y_max = int(fluid_depth / spacing) if fluid_depth > 0 else -1
+
+        for x_idx in x_range:
+            for y_idx in y_range:
+                for z_idx in z_range:
+                    x = x_idx * spacing
+                    y = y_idx * spacing
+                    z = z_idx * spacing
+
+                    is_outside = (
+                        x_idx < x_min
+                        or x_idx > x_max
+                        or y_idx < y_min
+                        or y_idx > y_max
+                        or z_idx < z_min
+                        or z_idx > z_max
+                    )
+
+                    is_within_layers = (
+                        x_idx >= x_min - boundary_layers
+                        and x_idx <= x_max + boundary_layers
+                        and y_idx >= y_min - boundary_layers
+                        and y_idx <= y_max + boundary_layers
+                        and z_idx >= z_min - boundary_layers
+                        and z_idx <= z_max + boundary_layers
+                    )
+
+                    # Generate boundary particles
+                    if is_outside and is_within_layers:
+                        boundary_particles.append([x, y, z])
+
+                    # Generate fluid pool particles
+                    elif (not is_outside) and fluid_depth > 0 and y_idx <= fluid_y_max:
+                        in_rect_region = False
+                        if min_point is not None and max_point is not None:
+                            in_rect_region = (
+                                min_point[0] - spacing < x < max_point[0] + spacing
+                                and min_point[1] - spacing < y < max_point[1] + spacing
+                                and min_point[2] - spacing < z < max_point[2] + spacing
+                            )
+
+                        if not in_rect_region:
+                            fluid_particles.append([x, y, z])
+
+        # Add fluid particles in rectangular region if specified
+        if min_point is not None and max_point is not None:
+            assert (
+                0 < min_point[0] < max_point[0] < BOX_WIDTH
+            ), "Invalid X range for rectangle"
+            assert (
+                0 < min_point[1] < max_point[1] < BOX_HEIGHT
+            ), "Invalid Y range for rectangle"
+            assert (
+                0 < min_point[2] < max_point[2] < BOX_LENGTH
+            ), "Invalid Z range for rectangle"
+
+            x_rect = np.arange(min_point[0], max_point[0], spacing)
+            y_rect = np.arange(min_point[1], max_point[1], spacing)
+            z_rect = np.arange(min_point[2], max_point[2], spacing)
+
+            xx, yy, zz = np.meshgrid(x_rect, y_rect, z_rect, indexing="ij")
+            rect_positions = np.stack([xx.ravel(), yy.ravel(), zz.ravel()]).T
+
+            for pos in rect_positions:
+                fluid_particles.append(pos)
+
+        all_boundary_particles = []
+        self.rigid_index = []
+        for rigid in rigid_particles:
+            all_boundary_particles.extend(rigid.tolist())
+            self.rigid_index.append(len(all_boundary_particles) - 1)
+        all_boundary_particles.extend(boundary_particles)
+
+        # Convert to warp arrays
+        self.boundary_x = wp.array(all_boundary_particles, dtype=wp.vec3)
+        self.boundary_n = len(boundary_particles)
+        self.x = wp.array(fluid_particles, dtype=wp.vec3)
+        self.n = len(fluid_particles)
 
     def step(self):  # TODO use CUDA graph capture
         with wp.ScopedTimer("step", active=self.verbose):
