@@ -722,8 +722,8 @@ class IISPH:
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
 
-        min_point = (BOX_WIDTH * 0.8, BOX_HEIGHT * 0.2, BOX_LENGTH * 0.8)
-        max_point = (BOX_WIDTH * 0.9, BOX_HEIGHT * 0.3, BOX_LENGTH * 0.9)
+        min_point = (BOX_WIDTH * 0.7, BOX_HEIGHT * 0.01, BOX_LENGTH * 0.8)
+        max_point = (BOX_WIDTH * 0.99, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.99)
         self.init_particles(
             min_point=min_point,
             max_point=max_point,
@@ -917,7 +917,7 @@ class IISPH:
         def add_model(
             filename,
             scale=1.0,
-            pos=np.zeros(3),
+            pos: np.ndarray = np.zeros(3),
             rot=np.eye(3),
             spacing=DIAMETER,
         ):
@@ -925,7 +925,7 @@ class IISPH:
             print(f"Loaded model {filename} with {len(model)} particles")
             model_list.append(model)
 
-        add_model("house.obj", 1e-2)
+        add_model("house.obj", 2e-2, np.array([3.0, 0.0, 4.0]))
 
         # Convert to warp arrays and return
         for model in model_list:
@@ -935,6 +935,11 @@ class IISPH:
         self.boundary_n = len(boundary_particles)
         self.x = wp.array(fluid_particles, dtype=wp.vec3)
         self.n = len(fluid_particles)
+
+        # TODO remove this
+        idx = np.arange(self.boundary_hide_n)
+        mask = np.random.rand(self.boundary_hide_n) < 1e-2
+        self.select_boundary = self.boundary_x.numpy()[idx[mask]]
 
     def step(self):  # TODO use CUDA graph capture
         with wp.ScopedTimer("step", active=self.verbose):
@@ -1285,6 +1290,12 @@ class IISPH:
             name="boundary",
             colors=(0.6, 0.7, 0.8),
         )
+        # renderer.render_points(
+        #     points=self.select_boundary,
+        #     radius=wp.constant(DIAMETER / 3.0),
+        #     name="box",
+        #     colors=(0.8, 0.6, 0.6),
+        # )
         renderer.end_frame()
 
     def render(self):

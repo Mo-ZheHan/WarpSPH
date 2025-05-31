@@ -28,7 +28,7 @@ def _sample_points(filename, scale, spacing):
     if grid.shape[0] == 0:
         return grid
 
-    n_jobs = max(1, int(0.9 * multiprocessing.cpu_count()))
+    n_jobs = 32
     n_tasks = n_jobs * 8
     print(f"Using {n_jobs} parallel jobs and {n_tasks} tasks for model sampling.")
 
