@@ -7,7 +7,6 @@ requires-python = ">=3.12"
 dependencies = [
     "pyglet>=2.1",
     "tqdm>=4.67",
-    "trimesh>=4.6",
     "usd-core>=25.5",
     "warp-lang>=1.7",
 ]
