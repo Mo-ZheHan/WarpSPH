@@ -722,13 +722,18 @@ class IISPH:
         self.inv_dt = 1 / self.dt
         self.boundary_layer = 3
 
-        min_point = (BOX_WIDTH * 0.7, BOX_HEIGHT * 0.01, BOX_LENGTH * 0.8)
-        max_point = (BOX_WIDTH * 0.99, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.99)
-        self.init_particles(
-            min_point=min_point,
-            max_point=max_point,
-            # fluid_depth=0.2 * BOX_HEIGHT,
-        )
+        if scene_type == SceneType.HOUSE:
+            min_point = (BOX_WIDTH * 0.7, BOX_HEIGHT * 0.01, BOX_LENGTH * 0.8)
+            max_point = (BOX_WIDTH * 0.99, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.99)
+            self.init_particles(min_point, max_point)
+        elif scene_type == SceneType.PLANE:
+            min_point = (BOX_WIDTH * 0.5, BOX_HEIGHT * 0.1, BOX_LENGTH * 0.1)
+            max_point = (BOX_WIDTH * 0.9, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.5)
+            self.init_particles(min_point, max_point, boundary_layers=0)
+        elif scene_type == SceneType.HAND:
+            raise NotImplementedError("Hand scene not implemented yet")
+        else:
+            raise NotImplementedError("Not implemented scene type")
 
         # create hash array
         self.fluid_grid = wp.HashGrid(
@@ -925,7 +930,16 @@ class IISPH:
             print(f"Loaded model {filename} with {len(model)} particles")
             model_list.append(model)
 
-        add_model("house.obj", 2e-2, np.array([3.0, 0.0, 4.0]))
+        if scene_type == SceneType.HOUSE:
+            add_model("house.obj", 2e-2, np.array([3.0, 0.0, 4.0]))
+        elif scene_type == SceneType.PLANE:
+            pos = np.array([0.0, 2.2, 2.3])
+            rot = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
+            add_model("plane.obj", 3e-3, pos, rot)
+        elif scene_type == SceneType.HAND:
+            raise NotImplementedError("Hand scene not implemented yet")
+        else:
+            raise NotImplementedError("Not implemented scene type")
 
         # Convert to warp arrays and return
         for model in model_list:
@@ -935,6 +949,7 @@ class IISPH:
         self.boundary_n = len(boundary_particles)
         self.x = wp.array(fluid_particles, dtype=wp.vec3)
         self.n = len(fluid_particles)
+        print(f"Initialized {self.n} fluid and {self.boundary_n} boundary particles")
 
         # TODO remove this
         idx = np.arange(self.boundary_hide_n)
@@ -1271,7 +1286,7 @@ class IISPH:
 
             self.sim_time += self.dt
             self.dt = wp.min(  # CFL condition
-                0.4 * DIAMETER / v_max.numpy()[0], TIME_STEP_MAX
+                0.4 * DIAMETER / max(v_max.numpy()[0], INV_SMALL), TIME_STEP_MAX
             )
             self.inv_dt = 1 / self.dt
 
