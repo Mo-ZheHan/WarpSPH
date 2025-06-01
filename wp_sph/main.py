@@ -1,4 +1,4 @@
-from enum import Enum, auto
+from enum import Enum
 from pathlib import Path
 
 import warp as wp
@@ -11,9 +11,12 @@ def model_dir(filename):
 
 
 class SceneType(Enum):
-    HOUSE = auto()
-    PLANE = auto()
-    HAND = auto()
+    HOUSE = False  # if the rigid body is static
+    PLANE = True  # if the rigid body is dynamic
+    HAND = True
+
+scene_type = SceneType.PLANE
+DYNAMIC_SCENE = scene_type.value
 
 
 ###########################################################################
@@ -25,9 +28,8 @@ ETA = 1.0e-3
 RHO_0 = 1.0e3
 INV_SMALL = 1.0e-6
 
+###########################################################################
 # Scene settings
-scene_type = SceneType.HAND
-
 if scene_type == SceneType.HOUSE:
     BOX_WIDTH = 8.0
     BOX_HEIGHT = 10.0

@@ -753,8 +753,8 @@ class IISPH:
             max_point = (BOX_WIDTH * 0.99, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.99)
             self.init_particles(min_point, max_point)
         elif scene_type == SceneType.PLANE:
-            min_point = (BOX_WIDTH * 0.40, BOX_HEIGHT * 0.05, BOX_LENGTH * 0.05)
-            max_point = (BOX_WIDTH * 0.41, BOX_HEIGHT * 0.95, BOX_LENGTH * 0.95)
+            min_point = (BOX_WIDTH * 0.45, BOX_HEIGHT * 0.05, BOX_LENGTH * 0.05)
+            max_point = (BOX_WIDTH * 0.55, BOX_HEIGHT * 0.95, BOX_LENGTH * 0.95)
             self.init_particles(min_point, max_point, boundary_layers=0)
         elif scene_type == SceneType.HAND:
             min_point = (BOX_WIDTH * 0.48, BOX_HEIGHT * 0.1, BOX_LENGTH * 0.48)
@@ -1404,7 +1404,8 @@ class IISPH:
 
         # build grid of fluid particles
         self.fluid_grid.build(self.x, SMOOTHING_LENGTH)
-        self.boundary_grid.build(self.boundary_x, SMOOTHING_LENGTH)
+        if DYNAMIC_SCENE:
+            self.boundary_grid.build(self.boundary_x, SMOOTHING_LENGTH)
 
         # search fluid neighbors for fluid
         neighbor_pointer = wp.zeros(1, dtype=int)  # type: ignore
