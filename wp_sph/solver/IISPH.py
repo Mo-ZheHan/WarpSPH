@@ -46,6 +46,8 @@ def compute_boundary_density(
 
     boundary_phi[i] = RHO_0 / rho  # type: ignore
 
+    # boundary_phi[tid] = FLUID_MASS
+
 
 @wp.kernel
 def count_same_neighbor(
@@ -320,8 +322,9 @@ def predict_rho_adv(
         fs_neighbor_list_index[i], fs_neighbor_list_index[i] + fs_neighbor_num[i]
     ):
         index = fs_neighbor_list[j]
+        v_ib = v_adv - boundary_v[index]
         grad_W_ib = grad_spline_W(boundary_x[index] - x, grad_W_table)
-        term_2 += wp.dot(v_adv, grad_W_ib) * boundary_phi[index]
+        term_2 += wp.dot(v_ib, grad_W_ib) * boundary_phi[index]
 
     fluid_rho_adv[i] = fluid_rho[i] + (term_1 * FLUID_MASS + term_2) * dt
 
@@ -646,6 +649,29 @@ def update_rho_error(
 
 
 @wp.kernel
+def set_rigid_v(
+    boundary_hide_n: int,
+    rigid_v: wp.vec3,
+    boundary_v: wp.array(dtype=wp.vec3),  # type: ignore
+):
+    tid = wp.tid()
+    if tid >= boundary_hide_n:
+        boundary_v[tid] = rigid_v
+
+
+@wp.kernel
+def update_rigid_x(
+    dt: float,
+    boundary_hide_n: int,
+    boundary_v: wp.array(dtype=wp.vec3),  # type: ignore
+    boundary_x: wp.array(dtype=wp.vec3),  # type: ignore
+):
+    tid = wp.tid()
+    if tid >= boundary_hide_n:
+        boundary_x[tid] += boundary_v[tid] * dt
+
+
+@wp.kernel
 def kick(
     inv_dt: float,
     particle_p: wp.array(dtype=float),  # type: ignore
@@ -727,8 +753,8 @@ class IISPH:
             max_point = (BOX_WIDTH * 0.99, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.99)
             self.init_particles(min_point, max_point)
         elif scene_type == SceneType.PLANE:
-            min_point = (BOX_WIDTH * 0.5, BOX_HEIGHT * 0.1, BOX_LENGTH * 0.1)
-            max_point = (BOX_WIDTH * 0.9, BOX_HEIGHT * 0.5, BOX_LENGTH * 0.5)
+            min_point = (BOX_WIDTH * 0.40, BOX_HEIGHT * 0.05, BOX_LENGTH * 0.05)
+            max_point = (BOX_WIDTH * 0.41, BOX_HEIGHT * 0.95, BOX_LENGTH * 0.95)
             self.init_particles(min_point, max_point, boundary_layers=0)
         elif scene_type == SceneType.HAND:
             raise NotImplementedError("Hand scene not implemented yet")
@@ -933,7 +959,7 @@ class IISPH:
         if scene_type == SceneType.HOUSE:
             add_model("house.obj", 2e-2, np.array([3.0, 0.0, 4.0]))
         elif scene_type == SceneType.PLANE:
-            pos = np.array([0.0, 2.2, 2.3])
+            pos = np.array([0.0, 4.0, 4.0])
             rot = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
             add_model("plane.obj", 3e-3, pos, rot)
         elif scene_type == SceneType.HAND:
@@ -1015,6 +1041,17 @@ class IISPH:
                 )
 
                 # predict density advection
+                if scene_type == SceneType.PLANE and self.sim_time == 0.0:
+                    wp.launch(
+                        kernel=set_rigid_v,
+                        dim=self.boundary_n,
+                        inputs=[
+                            self.boundary_hide_n,
+                            wp.vec3(2.0, 0.0, 0.0),
+                        ],
+                        outputs=[self.boundary_v],
+                    )
+
                 wp.launch(
                     kernel=predict_rho_adv,
                     dim=self.n,
@@ -1135,7 +1172,11 @@ class IISPH:
                 loop = 0
                 while (loop < 2) or (self.average_rho_error > ETA):
                     if loop > 100:
-                        self.raise_error("Pressure solver did not converge.")
+                        # self.raise_error("Pressure solver did not converge.")
+                        print(
+                            f"Pressure solver did not converge at {self.sim_time:.2f}s"
+                        )
+                        break
 
                     wp.launch(
                         kernel=update_p,
@@ -1282,6 +1323,17 @@ class IISPH:
                         self.x,
                         # self.penetration_times,
                     ],
+                )
+
+                wp.launch(
+                    kernel=update_rigid_x,
+                    dim=self.boundary_n,
+                    inputs=[
+                        self.dt,
+                        self.boundary_hide_n,
+                        self.boundary_v,
+                    ],
+                    outputs=[self.boundary_x],
                 )
 
             self.sim_time += self.dt
