@@ -15,7 +15,7 @@ class SceneType(Enum):
     PLANE = True  # if the rigid body is dynamic
     HAND = True
 
-scene_type = SceneType.HOUSE
+scene_type = SceneType.HAND
 DYNAMIC_SCENE = scene_type.value
 
 
@@ -41,9 +41,9 @@ elif scene_type == SceneType.PLANE:
     BOX_LENGTH = 8.0
     GRAVITY = 0.0  # No gravity for plane scene
 elif scene_type == SceneType.HAND:
-    BOX_WIDTH = 8.0
-    BOX_HEIGHT = 50.0
-    BOX_LENGTH = 8.0
+    BOX_WIDTH = 20.0
+    BOX_HEIGHT = 80.0
+    BOX_LENGTH = 20.0
     GRAVITY /= 2.0
 else:
     raise ValueError(f"Unknown scene type: {scene_type}")
@@ -54,4 +54,4 @@ SMOOTHING_LENGTH = wp.constant(2 * DIAMETER)
 TIME_STEP_MAX = wp.constant(5e-2 * DIAMETER)
 FLUID_MASS = wp.constant(RHO_0 * DIAMETER**3)
 SIGMA = wp.constant(8 / (wp.pi * SMOOTHING_LENGTH**3))
-VIS_MU = wp.constant(5e-4 * RHO_0)
+VIS_MU = wp.constant(0.0 * RHO_0)
