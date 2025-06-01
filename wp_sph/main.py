@@ -15,7 +15,7 @@ class SceneType(Enum):
     PLANE = True  # if the rigid body is dynamic
     HAND = True
 
-scene_type = SceneType.PLANE
+scene_type = SceneType.HOUSE
 DYNAMIC_SCENE = scene_type.value
 
 
@@ -27,6 +27,7 @@ OMEGA = 0.5
 ETA = 1.0e-3
 RHO_0 = 1.0e3
 INV_SMALL = 1.0e-6
+FPS = 60
 
 ###########################################################################
 # Scene settings
@@ -50,7 +51,7 @@ else:
 ###########################################################################
 # Computed intermediate variables
 SMOOTHING_LENGTH = wp.constant(2 * DIAMETER)
-TIME_STEP_MAX = wp.constant(5e-3 * DIAMETER)
+TIME_STEP_MAX = wp.constant(5e-2 * DIAMETER)
 FLUID_MASS = wp.constant(RHO_0 * DIAMETER**3)
 SIGMA = wp.constant(8 / (wp.pi * SMOOTHING_LENGTH**3))
 VIS_MU = wp.constant(5e-4 * RHO_0)

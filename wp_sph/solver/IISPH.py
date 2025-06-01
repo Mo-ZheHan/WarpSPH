@@ -739,9 +739,9 @@ class IISPH:
         self.verbose = verbose
 
         # render params
-        # fps = 100
-        # self.frame_dt = 1.0 / fps
+        self.frame_dt = 1.0 / FPS
         self.sim_time = 0.0
+        self.last_frame_time = 0.0
 
         # simulation params
         self.dt = TIME_STEP_MAX
@@ -818,7 +818,7 @@ class IISPH:
 
         # renderer
         if stage_path:
-            self.renderer = warp.render.UsdRenderer(stage_path)
+            self.renderer = warp.render.UsdRenderer(stage_path, fps=FPS)
         else:
             self.renderer = None
 
@@ -1394,8 +1394,10 @@ class IISPH:
         if self.renderer is None:
             return
 
-        with wp.ScopedTimer("render", active=self.verbose):
-            self.activate_renderer(self.renderer)
+        if self.sim_time - self.last_frame_time >= self.frame_dt:
+            with wp.ScopedTimer("render", active=self.verbose):
+                self.activate_renderer(self.renderer)
+            self.last_frame_time = self.sim_time
 
     def neighbor_search(self):
         """
