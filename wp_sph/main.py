@@ -26,7 +26,7 @@ RHO_0 = 1.0e3
 INV_SMALL = 1.0e-6
 
 # Scene settings
-scene_type = SceneType.PLANE
+scene_type = SceneType.HAND
 
 if scene_type == SceneType.HOUSE:
     BOX_WIDTH = 8.0
@@ -38,9 +38,10 @@ elif scene_type == SceneType.PLANE:
     BOX_LENGTH = 8.0
     GRAVITY = 0.0  # No gravity for plane scene
 elif scene_type == SceneType.HAND:
-    BOX_WIDTH = 1.0
-    BOX_HEIGHT = 1.0
-    BOX_LENGTH = 1.0
+    BOX_WIDTH = 8.0
+    BOX_HEIGHT = 50.0
+    BOX_LENGTH = 8.0
+    GRAVITY /= 2.0
 else:
     raise ValueError(f"Unknown scene type: {scene_type}")
 

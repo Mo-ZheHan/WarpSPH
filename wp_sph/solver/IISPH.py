@@ -757,7 +757,9 @@ class IISPH:
             max_point = (BOX_WIDTH * 0.41, BOX_HEIGHT * 0.95, BOX_LENGTH * 0.95)
             self.init_particles(min_point, max_point, boundary_layers=0)
         elif scene_type == SceneType.HAND:
-            raise NotImplementedError("Hand scene not implemented yet")
+            min_point = (BOX_WIDTH * 0.48, BOX_HEIGHT * 0.1, BOX_LENGTH * 0.48)
+            max_point = (BOX_WIDTH * 0.52, BOX_HEIGHT * 0.99, BOX_LENGTH * 0.52)
+            self.init_particles(min_point, max_point)
         else:
             raise NotImplementedError("Not implemented scene type")
 
@@ -963,7 +965,16 @@ class IISPH:
             rot = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
             add_model("plane.obj", 3e-3, pos, rot)
         elif scene_type == SceneType.HAND:
-            raise NotImplementedError("Hand scene not implemented yet")
+            pos = np.array([4.5, 2.0, 1.0])
+            angle = np.radians(160)
+            rot = np.array(
+                [
+                    [np.cos(angle), -np.sin(angle), 0],
+                    [np.sin(angle), np.cos(angle), 0],
+                    [0, 0, 1],
+                ]
+            )
+            add_model("hand.obj", 0.3, pos, rot)
         else:
             raise NotImplementedError("Not implemented scene type")
 
@@ -1041,16 +1052,27 @@ class IISPH:
                 )
 
                 # predict density advection
-                if scene_type == SceneType.PLANE and self.sim_time == 0.0:
-                    wp.launch(
-                        kernel=set_rigid_v,
-                        dim=self.boundary_n,
-                        inputs=[
-                            self.boundary_hide_n,
-                            wp.vec3(2.0, 0.0, 0.0),
-                        ],
-                        outputs=[self.boundary_v],
-                    )
+                if self.sim_time == 0.0:
+                    if scene_type == SceneType.PLANE:
+                        wp.launch(
+                            kernel=set_rigid_v,
+                            dim=self.boundary_n,
+                            inputs=[
+                                self.boundary_hide_n,
+                                wp.vec3(2.0, 0.0, 0.0),
+                            ],
+                            outputs=[self.boundary_v],
+                        )
+                    elif scene_type == SceneType.HAND:
+                        wp.launch(
+                            kernel=set_rigid_v,
+                            dim=self.boundary_n,
+                            inputs=[
+                                self.boundary_hide_n,
+                                wp.vec3(0.0, 0.1, 0.0),
+                            ],
+                            outputs=[self.boundary_v],
+                        )
 
                 wp.launch(
                     kernel=predict_rho_adv,
@@ -1382,6 +1404,7 @@ class IISPH:
 
         # build grid of fluid particles
         self.fluid_grid.build(self.x, SMOOTHING_LENGTH)
+        self.boundary_grid.build(self.boundary_x, SMOOTHING_LENGTH)
 
         # search fluid neighbors for fluid
         neighbor_pointer = wp.zeros(1, dtype=int)  # type: ignore
