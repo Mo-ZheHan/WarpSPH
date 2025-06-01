@@ -21,7 +21,7 @@ parser.add_argument(
     help="Path to the output USD file.",
 )
 parser.add_argument(
-    "--num_frames", type=int, default=100, help="Total number of frames."
+    "--num_frames", type=int, default=15000, help="Total number of frames."
 )
 parser.add_argument(
     "--preview",
@@ -74,6 +74,6 @@ with wp.ScopedDevice(args.device):
         print("\nConverting to compressed PLY format...")
         try:
             usd_to_ply(args.stage_path)
-            os.remove(args.stage_path)
+            # os.remove(args.stage_path)
         except Exception as e:
             print(f"Conversion failed: {e}")

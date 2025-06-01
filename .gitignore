@@ -1,5 +1,6 @@
 *.usd
 *.log
+*.tar.zst
 *.DS_Store
 
 .direnv/
