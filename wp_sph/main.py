@@ -14,8 +14,9 @@ class SceneType(Enum):
     HOUSE = auto()
     PLANE = auto()
     HAND = auto()
+    EMPTY = auto()
 
-scene_type = SceneType.HAND
+scene_type = SceneType.EMPTY
 DYNAMIC_SCENE = scene_type in [SceneType.PLANE, SceneType.HAND]
 
 
@@ -44,6 +45,10 @@ elif scene_type == SceneType.HAND:
     BOX_WIDTH = 8.0
     BOX_HEIGHT = 50.0
     BOX_LENGTH = 8.0
+elif scene_type == SceneType.EMPTY:
+    BOX_WIDTH = 4.0
+    BOX_HEIGHT = 4.0
+    BOX_LENGTH = 4.0
 else:
     raise ValueError(f"Unknown scene type: {scene_type}")
 

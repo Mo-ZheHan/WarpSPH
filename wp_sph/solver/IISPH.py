@@ -760,6 +760,10 @@ class IISPH:
             min_point = (BOX_WIDTH * 0.48, BOX_HEIGHT * 0.05, BOX_LENGTH * 0.48)
             max_point = (BOX_WIDTH * 0.52, BOX_HEIGHT * 0.99, BOX_LENGTH * 0.52)
             self.init_particles(min_point, max_point)
+        elif scene_type == SceneType.EMPTY:
+            min_point = (BOX_WIDTH * 0.02, BOX_HEIGHT * 0.02, BOX_LENGTH * 0.02)
+            max_point = (BOX_WIDTH * 0.98, BOX_HEIGHT * 0.4, BOX_LENGTH * 0.55)
+            self.init_particles(min_point, max_point)
         else:
             raise NotImplementedError("Not implemented scene type")
 
@@ -975,6 +979,8 @@ class IISPH:
                 ]
             )
             add_model("hand.obj", 0.3, pos, rot)
+        elif scene_type == SceneType.EMPTY:
+            pass
         else:
             raise NotImplementedError("Not implemented scene type")
 

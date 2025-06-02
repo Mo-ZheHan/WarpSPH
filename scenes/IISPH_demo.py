@@ -21,7 +21,7 @@ parser.add_argument(
     help="Path to the output USD file.",
 )
 parser.add_argument(
-    "--num_frames", type=int, default=15000, help="Total number of frames."
+    "--num_frames", type=int, default=5000, help="Total number of frames."
 )
 parser.add_argument(
     "--preview",
